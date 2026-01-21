@@ -47,7 +47,7 @@ export async function GET(
         }
 
         // Check if user is a member
-        const isMember = channel.members.some(m => m.agentId === currentUser.agentId);
+        const isMember = channel.members.some((m: { agentId: string }) => m.agentId === currentUser.agentId);
         if (!isMember) {
             return NextResponse.json(
                 { success: false, error: 'Not a member of this channel' },
