@@ -1,0 +1,179 @@
+{
+    "agents": [
+        {
+            "id": "agent-001",
+            "codename": "Agent Alpha",
+            "email": "alpha@circle-cia.id",
+            "faculty": "Fakultas Teknik",
+            "level": "Senior",
+            "status": "online",
+            "missions": 45,
+            "createdAt": "2025-01-01T00:00:00.000Z"
+        },
+        {
+            "id": "agent-002",
+            "codename": "Agent Omega",
+            "email": "omega@circle-cia.id",
+            "faculty": "Fakultas Ekonomi",
+            "level": "Senior",
+            "status": "online",
+            "missions": 38,
+            "createdAt": "2025-01-15T00:00:00.000Z"
+        },
+        {
+            "id": "agent-003",
+            "codename": "Agent Delta",
+            "email": "delta@circle-cia.id",
+            "faculty": "Fakultas Hukum",
+            "level": "Intermediate",
+            "status": "away",
+            "missions": 22,
+            "createdAt": "2025-02-01T00:00:00.000Z"
+        },
+        {
+            "id": "agent-004",
+            "codename": "Agent Sigma",
+            "email": "sigma@circle-cia.id",
+            "faculty": "Fakultas FISIP",
+            "level": "Junior",
+            "status": "offline",
+            "missions": 12,
+            "createdAt": "2025-03-01T00:00:00.000Z"
+        },
+        {
+            "id": "agent-005",
+            "codename": "Agent Theta",
+            "email": "theta@circle-cia.id",
+            "faculty": "Fakultas Kedokteran",
+            "level": "Intermediate",
+            "status": "online",
+            "missions": 28,
+            "createdAt": "2025-02-15T00:00:00.000Z"
+        },
+        {
+            "id": "agent-006",
+            "codename": "Agent Kappa",
+            "email": "kappa@circle-cia.id",
+            "faculty": "Fakultas Psikologi",
+            "level": "Junior",
+            "status": "away",
+            "missions": 8,
+            "createdAt": "2025-04-01T00:00:00.000Z"
+        }
+    ],
+    "operations": [
+        {
+            "id": "op-001",
+            "name": "Operation Shadow",
+            "status": "active",
+            "progress": 75,
+            "deadline": "2026-01-25T00:00:00.000Z",
+            "teamSize": 5,
+            "createdAt": "2026-01-01T00:00:00.000Z"
+        },
+        {
+            "id": "op-002",
+            "name": "Project Midnight",
+            "status": "active",
+            "progress": 45,
+            "deadline": "2026-02-01T00:00:00.000Z",
+            "teamSize": 3,
+            "createdAt": "2026-01-10T00:00:00.000Z"
+        },
+        {
+            "id": "op-003",
+            "name": "Intel Sweep Alpha",
+            "status": "planning",
+            "progress": 10,
+            "deadline": "2026-02-15T00:00:00.000Z",
+            "teamSize": 8,
+            "createdAt": "2026-01-15T00:00:00.000Z"
+        },
+        {
+            "id": "op-004",
+            "name": "Campus Watch",
+            "status": "completed",
+            "progress": 100,
+            "deadline": "2026-01-15T00:00:00.000Z",
+            "teamSize": 4,
+            "createdAt": "2025-12-01T00:00:00.000Z"
+        }
+    ],
+    "intel": [
+        {
+            "id": "intel-001",
+            "title": "Jadwal UAS Fakultas Teknik Bocor",
+            "content": "Informasi mengenai jadwal UAS semester ini telah diperoleh dari sumber internal.",
+            "priority": "high",
+            "source": "Agent Omega",
+            "createdAt": "2026-01-20T14:00:00.000Z"
+        },
+        {
+            "id": "intel-002",
+            "title": "Info Beasiswa Baru dari Rektorat",
+            "content": "Rektorat akan mengumumkan program beasiswa baru minggu depan.",
+            "priority": "medium",
+            "source": "Agent Delta",
+            "createdAt": "2026-01-20T13:00:00.000Z"
+        },
+        {
+            "id": "intel-003",
+            "title": "Perubahan Struktur BEM",
+            "content": "BEM akan melakukan restrukturisasi pada bulan depan.",
+            "priority": "low",
+            "source": "Agent Sigma",
+            "createdAt": "2026-01-20T12:00:00.000Z"
+        },
+        {
+            "id": "intel-004",
+            "title": "Event Kampus Minggu Depan",
+            "content": "Festival musik kampus akan diadakan minggu depan di lapangan utama.",
+            "priority": "medium",
+            "source": "Agent Theta",
+            "createdAt": "2026-01-20T11:00:00.000Z"
+        },
+        {
+            "id": "intel-005",
+            "title": "Intel Recruitment Perusahaan X",
+            "content": "Perusahaan teknologi besar akan mengadakan campus hiring bulan depan.",
+            "priority": "high",
+            "source": "Agent Kappa",
+            "createdAt": "2026-01-20T09:00:00.000Z"
+        }
+    ],
+    "messages": [
+        {
+            "id": "msg-001",
+            "fromAgent": "Agent Delta",
+            "toAgent": "Agent Alpha",
+            "content": "Intel tentang event minggu depan sudah saya kirimkan ke sistem.",
+            "read": false,
+            "createdAt": "2026-01-20T14:10:00.000Z"
+        },
+        {
+            "id": "msg-002",
+            "fromAgent": "Agent Omega",
+            "toAgent": "Agent Alpha",
+            "content": "Operasi Shadow update: target acquired. Menunggu konfirmasi untuk melanjutkan.",
+            "read": false,
+            "createdAt": "2026-01-20T14:00:00.000Z"
+        },
+        {
+            "id": "msg-003",
+            "fromAgent": "Command",
+            "toAgent": "Agent Alpha",
+            "content": "Briefing besok jam 9 pagi di markas. Kehadiran wajib untuk semua senior agents.",
+            "read": true,
+            "createdAt": "2026-01-20T13:00:00.000Z"
+        },
+        {
+            "id": "msg-004",
+            "fromAgent": "Agent Sigma",
+            "toAgent": "Agent Alpha",
+            "content": "Request backup for mission di Fakultas FISIP. Intel lokasi sudah confirmed.",
+            "read": true,
+            "createdAt": "2026-01-20T12:00:00.000Z"
+        }
+    ],
+    "applications": []
+}

@@ -1,0 +1,151 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { prisma } from '@/lib/prisma';
+import { verifyPassword, createToken, setAuthCookie } from '@/lib/auth';
+import { checkRateLimit, LOGIN_RATE_LIMIT, resetRateLimit } from '@/lib/rate-limit';
+import { isValidEmail } from '@/lib/validation';
+import { trackFailedLogin, securityCheck } from '@/lib/security';
+
+// POST - Login
+export async function POST(request: NextRequest) {
+    try {
+        // Get client IP for rate limiting
+        const ip = request.headers.get('x-forwarded-for')?.split(',')[0] ||
+            request.headers.get('x-real-ip') ||
+            'unknown';
+
+        const body = await request.json();
+        const { email, password } = body;
+
+        // Validate email format
+        if (!email || !isValidEmail(email)) {
+            return NextResponse.json(
+                { success: false, error: 'Invalid email format' },
+                { status: 400 }
+            );
+        }
+
+        if (!password) {
+            return NextResponse.json(
+                { success: false, error: 'Password is required' },
+                { status: 400 }
+            );
+        }
+
+        // Rate limit by IP + email to prevent brute force
+        const rateLimitKey = `login:${ip}:${email}`;
+        const rateLimit = checkRateLimit(rateLimitKey, LOGIN_RATE_LIMIT);
+
+        if (!rateLimit.allowed) {
+            const retryAfter = Math.ceil(rateLimit.resetIn / 1000);
+            return NextResponse.json(
+                {
+                    success: false,
+                    error: `Too many login attempts. Try again in ${retryAfter} seconds.`,
+                    retryAfter,
+                },
+                {
+                    status: 429,
+                    headers: {
+                        'Retry-After': retryAfter.toString(),
+                        'X-RateLimit-Remaining': '0',
+                        'X-RateLimit-Reset': new Date(Date.now() + rateLimit.resetIn).toISOString(),
+                    },
+                }
+            );
+        }
+
+        // Find user by email
+        const user = await prisma.user.findUnique({
+            where: { email: email.toLowerCase().trim() },
+            include: {
+                agent: {
+                    select: {
+                        id: true,
+                        codename: true,
+                        status: true,
+                    },
+                },
+            },
+        });
+
+        if (!user) {
+            // Track failed login for auto-ban
+            const banned = await trackFailedLogin(ip);
+            if (banned) {
+                return NextResponse.json(
+                    { success: false, error: 'Your IP has been temporarily banned due to too many failed attempts' },
+                    { status: 403 }
+                );
+            }
+            return NextResponse.json(
+                { success: false, error: 'Invalid email or password' },
+                { status: 401 }
+            );
+        }
+
+        // Verify password
+        const isValid = await verifyPassword(password, user.password);
+        if (!isValid) {
+            // Track failed login for auto-ban
+            const banned = await trackFailedLogin(ip);
+            if (banned) {
+                return NextResponse.json(
+                    { success: false, error: 'Your IP has been temporarily banned due to too many failed attempts' },
+                    { status: 403 }
+                );
+            }
+            return NextResponse.json(
+                { success: false, error: 'Invalid email or password' },
+                { status: 401 }
+            );
+        }
+
+        // Reset rate limit on successful login
+        resetRateLimit(rateLimitKey);
+
+        // Create JWT token
+        const token = await createToken({
+            userId: user.id,
+            email: user.email,
+            role: user.role,
+            agentId: user.agent?.id,
+            codename: user.agent?.codename,
+        });
+
+        // Set auth cookie
+        await setAuthCookie(token);
+
+        // Update agent status to online if linked
+        if (user.agentId) {
+            await prisma.agent.update({
+                where: { id: user.agentId },
+                data: { status: 'online' },
+            });
+        }
+
+        const response = NextResponse.json({
+            success: true,
+            data: {
+                user: {
+                    id: user.id,
+                    email: user.email,
+                    name: user.name,
+                    role: user.role,
+                    agent: user.agent,
+                },
+                token,
+            },
+        });
+
+        // Add rate limit headers
+        response.headers.set('X-RateLimit-Remaining', rateLimit.remaining.toString());
+
+        return response;
+    } catch (error) {
+        console.error('Error during login:', error);
+        return NextResponse.json(
+            { success: false, error: 'Login failed' },
+            { status: 500 }
+        );
+    }
+}

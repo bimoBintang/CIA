@@ -1,0 +1,118 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// User roles enum
+enum Role {
+  ADMIN // Full access - manage all
+  SENIOR_AGENT // Can manage operations, intel, messages
+  AGENT // Can view and submit intel, messages
+  VIEWER // Read-only access
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      Role     @default(AGENT)
+  agentId   String?  @unique
+  agent     Agent?   @relation(fields: [agentId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Agent {
+  id        String   @id @default(cuid())
+  codename  String   @unique
+  email     String   @unique
+  faculty   String
+  level     String   @default("Junior")
+  status    String   @default("offline")
+  missions  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user             User?
+  sentMessages     Message[] @relation("SentMessages")
+  receivedMessages Message[] @relation("ReceivedMessages")
+  intelReports     Intel[]
+}
+
+model Operation {
+  id        String   @id @default(cuid())
+  name      String
+  status    String   @default("planning")
+  progress  Int      @default(0)
+  deadline  DateTime
+  teamSize  Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Intel {
+  id        String   @id @default(cuid())
+  title     String
+  content   String?
+  priority  String   @default("low")
+  sourceId  String
+  source    Agent    @relation(fields: [sourceId], references: [id])
+  createdAt DateTime @default(now())
+}
+
+model Message {
+  id        String   @id @default(cuid())
+  content   String
+  read      Boolean  @default(false)
+  fromId    String
+  toId      String
+  fromAgent Agent    @relation("SentMessages", fields: [fromId], references: [id])
+  toAgent   Agent    @relation("ReceivedMessages", fields: [toId], references: [id])
+  createdAt DateTime @default(now())
+}
+
+model Application {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  faculty   String
+  reason    String
+  status    String   @default("pending")
+  createdAt DateTime @default(now())
+}
+
+model VisitorLog {
+  id        String   @id @default(cuid())
+  ip        String
+  userAgent String
+  device    String // mobile, tablet, desktop
+  browser   String // Chrome, Firefox, Safari, etc.
+  os        String // Windows, macOS, iOS, Android, etc.
+  country   String?
+  city      String?
+  page      String // visited page path
+  referer   String?
+  userId    String? // if logged in
+  createdAt DateTime @default(now())
+
+  @@index([ip])
+  @@index([createdAt])
+}
+
+model BannedIP {
+  id        String    @id @default(cuid())
+  ip        String    @unique
+  reason    String
+  bannedBy  String // admin user id
+  expiresAt DateTime? // null = permanent ban
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([ip])
+  @@index([expiresAt])
+}
