@@ -39,9 +39,11 @@ const ATTACK_PATTERNS = {
         /and\s+1\s*=\s*1/i,
         /'\s*or\s*'/i,
         /--/,
-        /;/,
         /sleep\s*\(/i,
         /benchmark\s*\(/i,
+        /waitfor\s+delay/i,
+        /load_file\s*\(/i,
+        /into\s+outfile/i,
     ],
     XSS: [
         /<script/i,
@@ -54,6 +56,12 @@ const ATTACK_PATTERNS = {
         /<embed/i,
         /<object/i,
         /vbscript:/i,
+        /<svg.*onload/i,
+        /<img.*onerror/i,
+        /expression\s*\(/i,
+        /eval\s*\(/i,
+        /document\.cookie/i,
+        /document\.location/i,
     ],
     PATH_TRAVERSAL: [
         /\.\.\//,
@@ -64,6 +72,10 @@ const ATTACK_PATTERNS = {
         /\.htaccess/i,
         /\.env/i,
         /\.git\//i,
+        /\/proc\/self/i,
+        /\/var\/log/i,
+        /web\.config/i,
+        /\.bash_history/i,
     ],
     COMMAND_INJECTION: [
         /;\s*cat\s/i,
@@ -74,6 +86,11 @@ const ATTACK_PATTERNS = {
         /\$\(.*\)/,
         /wget\s+http/i,
         /curl\s+http/i,
+        /nc\s+-e/i,
+        /\/bin\/sh/i,
+        /\/bin\/bash/i,
+        /&&\s*rm/i,
+        /\|\s*bash/i,
     ],
     BOT_SCANNER: [
         /nikto/i,
@@ -84,6 +101,12 @@ const ATTACK_PATTERNS = {
         /burpsuite/i,
         /acunetix/i,
         /nessus/i,
+        /masscan/i,
+        /w3af/i,
+        /wpscan/i,
+        /nuclei/i,
+        /ffuf/i,
+        /feroxbuster/i,
     ],
     DIRECTORY_ENUM: [
         /\/wp-admin/i,
@@ -93,6 +116,106 @@ const ATTACK_PATTERNS = {
         /\/debug/i,
         /\/swagger/i,
         /\/api-docs/i,
+        /\/graphql/i,
+        /\/actuator/i,
+        /\/wp-content/i,
+        /\/wp-includes/i,
+        /\/backup/i,
+        /\/database/i,
+        /\/\.well-known/i,
+    ],
+    // NEW: XXE Injection
+    XXE_INJECTION: [
+        /<!DOCTYPE.*\[/i,
+        /<!ENTITY/i,
+        /SYSTEM\s*"/i,
+        /file:\/\//i,
+        /expect:\/\//i,
+        /php:\/\//i,
+        /data:\/\//i,
+    ],
+    // NEW: LDAP Injection
+    LDAP_INJECTION: [
+        /\)\(\|/,
+        /\*\)\(/,
+        /\)\)\|/,
+        /\)\(!/,
+        /\)\(&/,
+    ],
+    // NEW: NoSQL Injection
+    NOSQL_INJECTION: [
+        /\$where/i,
+        /\$gt/i,
+        /\$lt/i,
+        /\$ne/i,
+        /\$regex/i,
+        /\$or\s*:/i,
+        /\$and\s*:/i,
+        /\{\s*"\$gt"/i,
+        /\{\s*"\$ne"/i,
+    ],
+    // NEW: SSRF (Server-Side Request Forgery)
+    SSRF: [
+        /localhost/i,
+        /127\.0\.0\.1/,
+        /0\.0\.0\.0/,
+        /169\.254\./,
+        /192\.168\./,
+        /10\.\d+\.\d+\.\d+/,
+        /172\.(1[6-9]|2\d|3[01])\./,
+        /\[::1\]/,
+        /::ffff:/i,
+        /file:\/\//i,
+        /gopher:\/\//i,
+        /dict:\/\//i,
+        /metadata\.google/i,
+        /instance-data/i,
+    ],
+    // NEW: Header Injection
+    HEADER_INJECTION: [
+        /%0d%0a/i,
+        /%0d/i,
+        /%0a/i,
+        /\r\n/,
+        /\r/,
+        /\n/,
+        /set-cookie:/i,
+        /location:/i,
+    ],
+    // NEW: File Upload Attacks
+    FILE_UPLOAD_ATTACK: [
+        /\.php$/i,
+        /\.php3$/i,
+        /\.php4$/i,
+        /\.php5$/i,
+        /\.phtml$/i,
+        /\.asp$/i,
+        /\.aspx$/i,
+        /\.jsp$/i,
+        /\.jspx$/i,
+        /\.exe$/i,
+        /\.sh$/i,
+        /\.bat$/i,
+        /\.cmd$/i,
+        /\.svg\+xml/i,
+        /image\/svg/i,
+    ],
+    // NEW: Prototype Pollution
+    PROTOTYPE_POLLUTION: [
+        /__proto__/,
+        /constructor\[/,
+        /prototype\[/,
+        /\["__proto__"\]/,
+        /\["constructor"\]/,
+    ],
+    // NEW: Template Injection
+    TEMPLATE_INJECTION: [
+        /\{\{.*\}\}/,
+        /\$\{.*\}/,
+        /<%= /,
+        /<% /,
+        /#\{.*\}/,
+        /\[\[.*\]\]/,
     ],
 };
 
@@ -103,6 +226,14 @@ export type ThreatType =
     | 'command_injection'
     | 'bot_scanner'
     | 'directory_enum'
+    | 'xxe_injection'
+    | 'ldap_injection'
+    | 'nosql_injection'
+    | 'ssrf'
+    | 'header_injection'
+    | 'file_upload_attack'
+    | 'prototype_pollution'
+    | 'template_injection'
     | 'rate_limit'
     | 'brute_force'
     | 'suspicious';
@@ -110,9 +241,17 @@ export type ThreatType =
 const THREAT_SEVERITY: Record<ThreatType, number> = {
     sql_injection: 10,
     command_injection: 10,
-    xss: 8,
-    path_traversal: 7,
+    xxe_injection: 10,
+    ssrf: 9,
+    prototype_pollution: 9,
+    template_injection: 9,
+    nosql_injection: 9,
     bot_scanner: 9,
+    ldap_injection: 8,
+    xss: 8,
+    file_upload_attack: 8,
+    header_injection: 7,
+    path_traversal: 7,
     directory_enum: 5,
     brute_force: 6,
     rate_limit: 4,
@@ -130,6 +269,14 @@ export function detectThreats(input: string): ThreatType[] {
         ['COMMAND_INJECTION', 'command_injection'],
         ['BOT_SCANNER', 'bot_scanner'],
         ['DIRECTORY_ENUM', 'directory_enum'],
+        ['XXE_INJECTION', 'xxe_injection'],
+        ['LDAP_INJECTION', 'ldap_injection'],
+        ['NOSQL_INJECTION', 'nosql_injection'],
+        ['SSRF', 'ssrf'],
+        ['HEADER_INJECTION', 'header_injection'],
+        ['FILE_UPLOAD_ATTACK', 'file_upload_attack'],
+        ['PROTOTYPE_POLLUTION', 'prototype_pollution'],
+        ['TEMPLATE_INJECTION', 'template_injection'],
     ];
 
     for (const [patternKey, threatType] of checks) {
