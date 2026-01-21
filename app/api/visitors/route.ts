@@ -114,11 +114,11 @@ export async function GET(request: NextRequest) {
             stats: {
                 total,
                 uniqueVisitors: uniqueIPs.length,
-                devices: deviceStats.reduce((acc, d) => {
+                devices: deviceStats.reduce((acc: Record<string, number>, d) => {
                     acc[d.device] = d._count.device;
                     return acc;
                 }, {} as Record<string, number>),
-                topBrowsers: browserStats.map(b => ({
+                topBrowsers: browserStats.map((b) => ({
                     browser: b.browser,
                     count: b._count.browser,
                 })),
