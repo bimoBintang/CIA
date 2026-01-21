@@ -19,7 +19,7 @@ async function refreshBannedIPCache(): Promise<void> {
             select: { ip: true },
         });
 
-        bannedIPCache = new Set(bannedIPs.map(b => b.ip));
+        bannedIPCache = new Set(bannedIPs.map((b: { ip: string }) => b.ip));
         cacheTimestamp = Date.now();
     } catch (error) {
         console.error('Error refreshing banned IP cache:', error);
