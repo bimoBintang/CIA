@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { fetchWithCache, invalidateCache } from "@/lib/cache";
@@ -53,8 +53,11 @@ interface Message {
     content: string;
     read: boolean;
     createdAt: string;
-    fromAgent?: { codename: string };
-    toAgent?: { codename: string };
+    fromId: string;
+    toId: string;
+    attachments?: string[];
+    fromAgent: Agent;
+    toAgent: Agent;
 }
 
 interface Stats {
@@ -831,132 +834,510 @@ function IntelSection({ showToast, agents }: { showToast: (msg: string, type: "s
     );
 }
 
-// Messages Section
+// Channel interface
+interface Channel {
+    id: string;
+    name: string;
+    description: string | null;
+    type: string;
+    members: { agent: { id: string; codename: string; status: string } }[];
+    messages: { content: string; sender: { codename: string } }[];
+    _count: { messages: number };
+}
+
+interface ChannelMessage {
+    id: string;
+    content: string;
+    attachments: string[];
+    createdAt: string;
+    sender: { id: string; codename: string; status: string };
+}
+
+// Messages Section - Chat Layout
 function MessagesSection({ showToast, agents, user }: { showToast: (msg: string, type: "success" | "error") => void; agents: Agent[]; user: User | null }) {
     const [messages, setMessages] = useState<Message[]>([]);
-    const [unreadCount, setUnreadCount] = useState(0);
+    const [channels, setChannels] = useState<Channel[]>([]);
+    const [channelMessages, setChannelMessages] = useState<ChannelMessage[]>([]);
     const [loading, setLoading] = useState(true);
-    const [showModal, setShowModal] = useState(false);
-    const [formData, setFormData] = useState({ content: "", toId: "" });
+    const [activeView, setActiveView] = useState<"dm" | "channel">("dm");
+    const [selectedDM, setSelectedDM] = useState<string | null>(null);
+    const [selectedChannel, setSelectedChannel] = useState<string | null>(null);
+    const [newMessage, setNewMessage] = useState("");
+    const [showNewChannelModal, setShowNewChannelModal] = useState(false);
+    const [showNewDMModal, setShowNewDMModal] = useState(false);
+    const [channelForm, setChannelForm] = useState({ name: "", description: "", memberIds: [] as string[] });
+    const [dmForm, setDmForm] = useState({ toId: "", content: "" });
     const [submitting, setSubmitting] = useState(false);
+    const [uploadingFile, setUploadingFile] = useState(false);
+    const [attachments, setAttachments] = useState<string[]>([]);
+    const fileInputRef = React.useRef<HTMLInputElement>(null);
 
-    const fetchMessages = useCallback(async (force = false) => {
+    // Fetch DMs
+    const fetchMessages = useCallback(async () => {
         try {
             const res = await fetch("/api/messages");
             const data = await res.json();
-            if (data.success) {
-                setMessages(data.data);
-                setUnreadCount(data.unread);
-            }
+            if (data.success) setMessages(data.data);
         } catch (error) {
             console.error("Error fetching messages:", error);
-        } finally {
-            setLoading(false);
+        }
+    }, []);
+
+    // Fetch Channels
+    const fetchChannels = useCallback(async () => {
+        try {
+            const res = await fetch("/api/channels");
+            const data = await res.json();
+            if (data.success) setChannels(data.data);
+        } catch (error) {
+            console.error("Error fetching channels:", error);
+        }
+    }, []);
+
+    // Fetch channel messages
+    const fetchChannelMessages = useCallback(async (channelId: string) => {
+        try {
+            const res = await fetch(`/api/channels/${channelId}/messages`);
+            const data = await res.json();
+            if (data.success) setChannelMessages(data.data);
+        } catch (error) {
+            console.error("Error fetching channel messages:", error);
         }
     }, []);
 
     useEffect(() => {
-        fetchMessages();
-    }, [fetchMessages]);
+        Promise.all([fetchMessages(), fetchChannels()]).finally(() => setLoading(false));
+    }, [fetchMessages, fetchChannels]);
 
-    async function handleSubmit(e: React.FormEvent) {
+    useEffect(() => {
+        if (selectedChannel) {
+            fetchChannelMessages(selectedChannel);
+            const interval = setInterval(() => fetchChannelMessages(selectedChannel), 5000);
+            return () => clearInterval(interval);
+        }
+    }, [selectedChannel, fetchChannelMessages]);
+
+    // Group DMs by conversation partner
+    const conversations = useMemo(() => {
+        const convMap = new Map<string, { agent: Agent; lastMessage: Message; unread: number }>();
+        const myAgentId = user?.agent?.id;
+
+        messages.forEach(msg => {
+            const partnerId = msg.fromId === myAgentId ? msg.toId : msg.fromId;
+            const partner = msg.fromId === myAgentId ? msg.toAgent : msg.fromAgent;
+            if (!partner) return;
+
+            const existing = convMap.get(partnerId);
+            if (!existing || new Date(msg.createdAt) > new Date(existing.lastMessage.createdAt)) {
+                convMap.set(partnerId, {
+                    agent: partner,
+                    lastMessage: msg,
+                    unread: (existing?.unread || 0) + (!msg.read && msg.toId === myAgentId ? 1 : 0),
+                });
+            } else if (!msg.read && msg.toId === myAgentId) {
+                existing.unread++;
+            }
+        });
+
+        return Array.from(convMap.values()).sort((a, b) =>
+            new Date(b.lastMessage.createdAt).getTime() - new Date(a.lastMessage.createdAt).getTime()
+        );
+    }, [messages, user]);
+
+    // Get DM thread
+    const dmThread = useMemo(() => {
+        if (!selectedDM || !user?.agent?.id) return [];
+        return messages
+            .filter(m => (m.fromId === selectedDM && m.toId === user.agent!.id) || (m.toId === selectedDM && m.fromId === user.agent!.id))
+            .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    }, [messages, selectedDM, user]);
+
+    // File upload handler
+    async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setUploadingFile(true);
+        try {
+            const formData = new FormData();
+            formData.append("file", file);
+            const res = await fetch("/api/upload", { method: "POST", body: formData });
+            const data = await res.json();
+            if (data.success) {
+                setAttachments(prev => [...prev, data.data.url]);
+                showToast("File uploaded!", "success");
+            } else {
+                showToast(data.error || "Upload failed", "error");
+            }
+        } catch {
+            showToast("Upload error", "error");
+        } finally {
+            setUploadingFile(false);
+            if (fileInputRef.current) fileInputRef.current.value = "";
+        }
+    }
+
+    // Send DM
+    async function sendDM(e: React.FormEvent) {
         e.preventDefault();
+        if (!newMessage.trim() && attachments.length === 0) return;
+        if (!selectedDM || !user?.agent?.id) return;
+
         setSubmitting(true);
         try {
-            // Use current user's agent ID
-            const fromAgentId = user?.agent?.id;
-            if (!fromAgentId) {
-                showToast("Anda bukan agent, tidak bisa mengirim pesan", "error");
-                setSubmitting(false);
-                return;
-            }
             const res = await fetch("/api/messages", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ ...formData, fromId: fromAgentId }),
+                body: JSON.stringify({
+                    content: newMessage.trim(),
+                    toId: selectedDM,
+                    fromId: user.agent.id,
+                    attachments,
+                }),
             });
             const data = await res.json();
             if (data.success) {
-                showToast("Message berhasil dikirim!", "success");
-                setShowModal(false);
-                setFormData({ content: "", toId: "" });
-                invalidateCache("/api/messages");
-                invalidateCache("/api/stats");
-                fetchMessages(true);
+                setNewMessage("");
+                setAttachments([]);
+                fetchMessages();
             } else {
-                showToast(data.error || "Gagal mengirim message", "error");
+                showToast(data.error || "Failed to send", "error");
             }
         } catch {
-            showToast("Terjadi kesalahan", "error");
+            showToast("Error sending message", "error");
         } finally {
             setSubmitting(false);
         }
     }
 
+    // Send channel message
+    async function sendChannelMessage(e: React.FormEvent) {
+        e.preventDefault();
+        if (!newMessage.trim() && attachments.length === 0) return;
+        if (!selectedChannel) return;
+
+        setSubmitting(true);
+        try {
+            const res = await fetch(`/api/channels/${selectedChannel}/messages`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ content: newMessage.trim(), attachments }),
+            });
+            const data = await res.json();
+            if (data.success) {
+                setNewMessage("");
+                setAttachments([]);
+                fetchChannelMessages(selectedChannel);
+            } else {
+                showToast(data.error || "Failed to send", "error");
+            }
+        } catch {
+            showToast("Error sending message", "error");
+        } finally {
+            setSubmitting(false);
+        }
+    }
+
+    // Create channel
+    async function createChannel(e: React.FormEvent) {
+        e.preventDefault();
+        setSubmitting(true);
+        try {
+            const res = await fetch("/api/channels", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(channelForm),
+            });
+            const data = await res.json();
+            if (data.success) {
+                showToast("Channel created!", "success");
+                setShowNewChannelModal(false);
+                setChannelForm({ name: "", description: "", memberIds: [] });
+                fetchChannels();
+            } else {
+                showToast(data.error || "Failed", "error");
+            }
+        } catch {
+            showToast("Error", "error");
+        } finally {
+            setSubmitting(false);
+        }
+    }
+
+    // Send new DM
+    async function sendNewDM(e: React.FormEvent) {
+        e.preventDefault();
+        if (!user?.agent?.id) return;
+        setSubmitting(true);
+        try {
+            const res = await fetch("/api/messages", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ ...dmForm, fromId: user.agent.id }),
+            });
+            const data = await res.json();
+            if (data.success) {
+                showToast("Message sent!", "success");
+                setShowNewDMModal(false);
+                setDmForm({ toId: "", content: "" });
+                setSelectedDM(dmForm.toId);
+                fetchMessages();
+            } else {
+                showToast(data.error || "Failed", "error");
+            }
+        } catch {
+            showToast("Error", "error");
+        } finally {
+            setSubmitting(false);
+        }
+    }
+
+    const selectedConv = conversations.find(c => c.agent.id === selectedDM);
+    const selectedChan = channels.find(c => c.id === selectedChannel);
+
     if (loading) return <LoadingSkeleton />;
 
     return (
-        <div className="space-y-6">
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-2xl font-bold mb-2">Secure Messages</h1>
-                    <p className="text-zinc-500">Encrypted communications ({unreadCount} unread)</p>
+        <div className="flex h-[calc(100vh-120px)] -m-6 overflow-hidden">
+            {/* Sidebar */}
+            <div className="w-80 border-r border-zinc-800 flex flex-col bg-zinc-900/50">
+                {/* Tabs */}
+                <div className="flex border-b border-zinc-800">
+                    <button
+                        onClick={() => { setActiveView("dm"); setSelectedChannel(null); }}
+                        className={`flex-1 py-3 text-sm font-medium transition-all ${activeView === "dm" ? "text-green-400 border-b-2 border-green-500" : "text-zinc-400"}`}
+                    >
+                        💬 Direct ({conversations.length})
+                    </button>
+                    <button
+                        onClick={() => { setActiveView("channel"); setSelectedDM(null); }}
+                        className={`flex-1 py-3 text-sm font-medium transition-all ${activeView === "channel" ? "text-green-400 border-b-2 border-green-500" : "text-zinc-400"}`}
+                    >
+                        📢 Channels ({channels.length})
+                    </button>
                 </div>
-                <button onClick={() => setShowModal(true)} className="btn-primary">+ New Message</button>
-            </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="space-y-2">
-                    {messages.map((msg) => (
-                        <div key={msg.id} className={`card cursor-pointer transition-all ${!msg.read ? "border-green-500/30 bg-green-500/5" : ""} hover:border-green-500/50`}>
-                            <div className="flex items-start gap-3">
-                                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center shrink-0">
-                                    <span className="text-black font-bold text-sm">{msg.fromAgent?.codename?.split(" ")[1]?.[0] || "?"}</span>
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                    <div className="flex items-center justify-between">
-                                        <span className="font-medium">{msg.fromAgent?.codename || "Unknown"}</span>
-                                        <span className="text-xs text-zinc-500">{getRelativeTime(msg.createdAt)}</span>
+                {/* List */}
+                <div className="flex-1 overflow-y-auto">
+                    {activeView === "dm" ? (
+                        <div className="p-2 space-y-1">
+                            {conversations.map(conv => (
+                                <button key={conv.agent.id} onClick={() => setSelectedDM(conv.agent.id)} className={`w-full p-3 rounded-lg text-left transition-all ${selectedDM === conv.agent.id ? "bg-green-500/20 border border-green-500/30" : "hover:bg-zinc-800/50"}`}>
+                                    <div className="flex items-center gap-3">
+                                        <div className="relative">
+                                            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center">
+                                                <span className="text-black font-bold text-sm">{conv.agent.codename?.split(" ")[1]?.[0] || "?"}</span>
+                                            </div>
+                                            <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-zinc-900 ${conv.agent.status === "online" ? "bg-green-500" : "bg-zinc-500"}`} />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-center justify-between">
+                                                <span className="font-medium truncate">{conv.agent.codename}</span>
+                                                {conv.unread > 0 && <span className="bg-green-500 text-black text-xs px-1.5 py-0.5 rounded-full font-bold">{conv.unread}</span>}
+                                            </div>
+                                            <p className="text-xs text-zinc-500 truncate">{conv.lastMessage.content}</p>
+                                        </div>
                                     </div>
-                                    <p className="text-sm text-zinc-400 truncate">{msg.content}</p>
-                                </div>
-                                {!msg.read && <div className="w-2 h-2 bg-green-500 rounded-full" />}
-                            </div>
+                                </button>
+                            ))}
+                            {conversations.length === 0 && <p className="text-center text-zinc-500 py-8">No conversations yet</p>}
                         </div>
-                    ))}
+                    ) : (
+                        <div className="p-2 space-y-1">
+                            {channels.map(chan => (
+                                <button key={chan.id} onClick={() => setSelectedChannel(chan.id)} className={`w-full p-3 rounded-lg text-left transition-all ${selectedChannel === chan.id ? "bg-green-500/20 border border-green-500/30" : "hover:bg-zinc-800/50"}`}>
+                                    <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                                            <span className="text-white font-bold">#</span>
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <p className="font-medium truncate">{chan.name}</p>
+                                            <p className="text-xs text-zinc-500">{chan.members.length} members</p>
+                                        </div>
+                                    </div>
+                                </button>
+                            ))}
+                            {channels.length === 0 && <p className="text-center text-zinc-500 py-8">No channels yet</p>}
+                        </div>
+                    )}
                 </div>
 
-                <div className="lg:col-span-2 card flex items-center justify-center min-h-[400px]">
-                    <div className="text-center text-zinc-500">
-                        <p className="text-4xl mb-4">💬</p>
-                        <p>Select a conversation to view messages</p>
-                    </div>
+                {/* New Button */}
+                <div className="p-3 border-t border-zinc-800">
+                    <button
+                        onClick={() => activeView === "dm" ? setShowNewDMModal(true) : setShowNewChannelModal(true)}
+                        className="w-full btn-primary text-sm"
+                    >
+                        {activeView === "dm" ? "+ New Message" : "+ New Channel"}
+                    </button>
                 </div>
             </div>
 
-            <Modal isOpen={showModal} onClose={() => setShowModal(false)} title="New Message">
-                <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Chat View */}
+            <div className="flex-1 flex flex-col bg-zinc-950">
+                {(selectedDM || selectedChannel) ? (
+                    <>
+                        {/* Header */}
+                        <div className="px-6 py-4 border-b border-zinc-800 flex items-center gap-4">
+                            {activeView === "dm" && selectedConv && (
+                                <>
+                                    <div className="w-10 h-10 rounded-full bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center">
+                                        <span className="text-black font-bold">{selectedConv.agent.codename?.split(" ")[1]?.[0]}</span>
+                                    </div>
+                                    <div>
+                                        <p className="font-medium">{selectedConv.agent.codename}</p>
+                                        <p className="text-xs text-zinc-500">{selectedConv.agent.status}</p>
+                                    </div>
+                                </>
+                            )}
+                            {activeView === "channel" && selectedChan && (
+                                <>
+                                    <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                                        <span className="text-white font-bold">#</span>
+                                    </div>
+                                    <div>
+                                        <p className="font-medium">{selectedChan.name}</p>
+                                        <p className="text-xs text-zinc-500">{selectedChan.members.length} members</p>
+                                    </div>
+                                </>
+                            )}
+                        </div>
+
+                        {/* Messages */}
+                        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+                            {activeView === "dm" ? (
+                                dmThread.map(msg => (
+                                    <div key={msg.id} className={`flex ${msg.fromId === user?.agent?.id ? "justify-end" : "justify-start"}`}>
+                                        <div className={`max-w-[70%] rounded-2xl px-4 py-2 ${msg.fromId === user?.agent?.id ? "bg-green-500/20 rounded-br-sm" : "bg-zinc-800 rounded-bl-sm"}`}>
+                                            <p>{msg.content}</p>
+                                            {msg.attachments && msg.attachments.length > 0 && (
+                                                <div className="mt-2 space-y-1">
+                                                    {msg.attachments.map((att, i) => (
+                                                        <a key={i} href={att} target="_blank" className="block text-xs text-green-400 hover:underline">📎 Attachment {i + 1}</a>
+                                                    ))}
+                                                </div>
+                                            )}
+                                            <p className="text-xs text-zinc-500 mt-1">{getRelativeTime(msg.createdAt)}</p>
+                                        </div>
+                                    </div>
+                                ))
+                            ) : (
+                                channelMessages.map(msg => (
+                                    <div key={msg.id} className={`flex ${msg.sender.id === user?.agent?.id ? "justify-end" : "justify-start"}`}>
+                                        <div className={`max-w-[70%] ${msg.sender.id === user?.agent?.id ? "" : "flex gap-3"}`}>
+                                            {msg.sender.id !== user?.agent?.id && (
+                                                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-green-500 to-emerald-600 flex items-center justify-center shrink-0">
+                                                    <span className="text-black text-xs font-bold">{msg.sender.codename?.split(" ")[1]?.[0]}</span>
+                                                </div>
+                                            )}
+                                            <div className={`rounded-2xl px-4 py-2 ${msg.sender.id === user?.agent?.id ? "bg-green-500/20 rounded-br-sm" : "bg-zinc-800 rounded-bl-sm"}`}>
+                                                {msg.sender.id !== user?.agent?.id && <p className="text-xs text-green-400 mb-1">{msg.sender.codename}</p>}
+                                                <p>{msg.content}</p>
+                                                {msg.attachments && msg.attachments.length > 0 && (
+                                                    <div className="mt-2 space-y-1">
+                                                        {msg.attachments.map((att, i) => (
+                                                            <a key={i} href={att} target="_blank" className="block text-xs text-green-400 hover:underline">📎 Attachment {i + 1}</a>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                                <p className="text-xs text-zinc-500 mt-1">{getRelativeTime(msg.createdAt)}</p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
+
+                        {/* Input */}
+                        <form onSubmit={activeView === "dm" ? sendDM : sendChannelMessage} className="p-4 border-t border-zinc-800">
+                            {attachments.length > 0 && (
+                                <div className="flex gap-2 mb-2 flex-wrap">
+                                    {attachments.map((att, i) => (
+                                        <span key={i} className="bg-zinc-800 px-2 py-1 rounded text-xs flex items-center gap-1">
+                                            📎 {att.split("/").pop()}
+                                            <button type="button" onClick={() => setAttachments(prev => prev.filter((_, idx) => idx !== i))} className="text-red-400 hover:text-red-300">×</button>
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
+                            <div className="flex gap-2">
+                                <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
+                                <button type="button" onClick={() => fileInputRef.current?.click()} disabled={uploadingFile} className="px-3 py-2 bg-zinc-800 rounded-lg hover:bg-zinc-700 transition-all disabled:opacity-50">
+                                    {uploadingFile ? "⏳" : "📎"}
+                                </button>
+                                <input
+                                    type="text"
+                                    value={newMessage}
+                                    onChange={e => setNewMessage(e.target.value)}
+                                    placeholder="Type a message..."
+                                    className="flex-1 px-4 py-2 bg-zinc-800/50 border border-zinc-700 rounded-lg focus:border-green-500 focus:outline-none"
+                                />
+                                <button type="submit" disabled={submitting || (!newMessage.trim() && !attachments.length)} className="px-4 py-2 bg-green-500 text-black rounded-lg font-medium hover:bg-green-400 transition-all disabled:opacity-50">
+                                    {submitting ? "..." : "Send"}
+                                </button>
+                            </div>
+                        </form>
+                    </>
+                ) : (
+                    <div className="flex-1 flex items-center justify-center">
+                        <div className="text-center text-zinc-500">
+                            <p className="text-6xl mb-4">💬</p>
+                            <p className="text-xl">Select a conversation or channel</p>
+                            <p className="text-sm mt-2">Start messaging with your team</p>
+                        </div>
+                    </div>
+                )}
+            </div>
+
+            {/* New Channel Modal */}
+            <Modal isOpen={showNewChannelModal} onClose={() => setShowNewChannelModal(false)} title="Create Channel">
+                <form onSubmit={createChannel} className="space-y-4">
+                    <div>
+                        <label className="block text-sm text-zinc-400 mb-2">Channel Name</label>
+                        <input type="text" value={channelForm.name} onChange={e => setChannelForm({ ...channelForm, name: e.target.value })} className="w-full px-4 py-3 rounded-lg bg-zinc-900/50 border border-zinc-800 focus:border-green-500 focus:outline-none" placeholder="general" required />
+                    </div>
+                    <div>
+                        <label className="block text-sm text-zinc-400 mb-2">Description</label>
+                        <input type="text" value={channelForm.description} onChange={e => setChannelForm({ ...channelForm, description: e.target.value })} className="w-full px-4 py-3 rounded-lg bg-zinc-900/50 border border-zinc-800 focus:border-green-500 focus:outline-none" placeholder="Optional description..." />
+                    </div>
+                    <div>
+                        <label className="block text-sm text-zinc-400 mb-2">Add Members</label>
+                        <div className="space-y-2 max-h-40 overflow-y-auto">
+                            {agents.filter(a => a.id !== user?.agent?.id).map(agent => (
+                                <label key={agent.id} className="flex items-center gap-2 p-2 rounded hover:bg-zinc-800/50 cursor-pointer">
+                                    <input type="checkbox" checked={channelForm.memberIds.includes(agent.id)} onChange={e => setChannelForm({ ...channelForm, memberIds: e.target.checked ? [...channelForm.memberIds, agent.id] : channelForm.memberIds.filter(id => id !== agent.id) })} className="rounded" />
+                                    <span>{agent.codename}</span>
+                                </label>
+                            ))}
+                        </div>
+                    </div>
+                    <button type="submit" disabled={submitting} className="w-full btn-primary disabled:opacity-50">{submitting ? "Creating..." : "Create Channel"}</button>
+                </form>
+            </Modal>
+
+            {/* New DM Modal */}
+            <Modal isOpen={showNewDMModal} onClose={() => setShowNewDMModal(false)} title="New Message">
+                <form onSubmit={sendNewDM} className="space-y-4">
                     <div>
                         <label className="block text-sm text-zinc-400 mb-2">To Agent</label>
-                        <select value={formData.toId} onChange={(e) => setFormData({ ...formData, toId: e.target.value })} className="w-full px-4 py-3 rounded-lg bg-zinc-900/50 border border-zinc-800 focus:border-green-500 focus:outline-none" required>
-                            <option value="">Pilih agent...</option>
-                            {agents.map((agent) => (
+                        <select value={dmForm.toId} onChange={e => setDmForm({ ...dmForm, toId: e.target.value })} className="w-full px-4 py-3 rounded-lg bg-zinc-900/50 border border-zinc-800 focus:border-green-500 focus:outline-none" required>
+                            <option value="">Select agent...</option>
+                            {agents.filter(a => a.id !== user?.agent?.id).map(agent => (
                                 <option key={agent.id} value={agent.id}>{agent.codename}</option>
                             ))}
                         </select>
                     </div>
                     <div>
                         <label className="block text-sm text-zinc-400 mb-2">Message</label>
-                        <textarea value={formData.content} onChange={(e) => setFormData({ ...formData, content: e.target.value })} className="w-full px-4 py-3 rounded-lg bg-zinc-900/50 border border-zinc-800 focus:border-green-500 focus:outline-none h-32 resize-none" placeholder="Tulis pesan..." required />
+                        <textarea value={dmForm.content} onChange={e => setDmForm({ ...dmForm, content: e.target.value })} className="w-full px-4 py-3 rounded-lg bg-zinc-900/50 border border-zinc-800 focus:border-green-500 focus:outline-none h-24 resize-none" placeholder="Type your message..." required />
                     </div>
-                    <button type="submit" disabled={submitting} className="w-full btn-primary disabled:opacity-50">
-                        {submitting ? "Mengirim..." : "Send Message"}
-                    </button>
+                    <button type="submit" disabled={submitting} className="w-full btn-primary disabled:opacity-50">{submitting ? "Sending..." : "Send Message"}</button>
                 </form>
             </Modal>
         </div>
     );
 }
+
 
 // Monitoring Section
 interface VisitorLog {
@@ -1099,6 +1480,541 @@ function MonitoringSection() {
     );
 }
 
+// Banned IP interface
+interface BannedIP {
+    id: string;
+    ip: string;
+    reason: string;
+    bannedBy: string;
+    expiresAt: string | null;
+    createdAt: string;
+}
+
+// Login Activity interface
+interface LoginActivityItem {
+    id: string;
+    userId: string | null;
+    email: string;
+    ip: string;
+    device: string;
+    browser: string;
+    os: string;
+    status: string;
+    reason: string | null;
+    createdAt: string;
+    user?: { name: string; email: string; role: string } | null;
+}
+
+interface LoginActivityStats {
+    totalToday: number;
+    successToday: number;
+    failedToday: number;
+    uniqueIPs: number;
+}
+
+// Security Section
+function SecuritySection({ showToast }: { showToast: (msg: string, type: "success" | "error") => void }) {
+    const [activeSecurityTab, setActiveSecurityTab] = useState<"banned" | "activity">("banned");
+    const [bannedIPs, setBannedIPs] = useState<BannedIP[]>([]);
+    const [loginActivities, setLoginActivities] = useState<LoginActivityItem[]>([]);
+    const [loginStats, setLoginStats] = useState<LoginActivityStats | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [showModal, setShowModal] = useState(false);
+    const [formData, setFormData] = useState({ ip: "", reason: "", duration: "24h" });
+    const [submitting, setSubmitting] = useState(false);
+    const [searchTerm, setSearchTerm] = useState("");
+    const [filter, setFilter] = useState<"all" | "active" | "expired" | "permanent">("all");
+    const [statusFilter, setStatusFilter] = useState<"all" | "success" | "failed" | "blocked">("all");
+
+    const fetchBannedIPs = useCallback(async (force = false) => {
+        try {
+            const result = await fetchWithCache<BannedIP[]>("/api/banned-ips", { force });
+            if (result.data) setBannedIPs(result.data);
+        } catch (error) {
+            console.error("Error fetching banned IPs:", error);
+        }
+    }, []);
+
+    const fetchLoginActivities = useCallback(async () => {
+        try {
+            const res = await fetch(`/api/login-activity?limit=100&status=${statusFilter === "all" ? "" : statusFilter}`);
+            const data = await res.json();
+            if (data.success) {
+                setLoginActivities(data.data);
+                setLoginStats(data.stats);
+            }
+        } catch (error) {
+            console.error("Error fetching login activities:", error);
+        }
+    }, [statusFilter]);
+
+    useEffect(() => {
+        Promise.all([fetchBannedIPs(), fetchLoginActivities()]).finally(() => setLoading(false));
+    }, [fetchBannedIPs, fetchLoginActivities]);
+
+    async function handleSubmit(e: React.FormEvent) {
+        e.preventDefault();
+        setSubmitting(true);
+        try {
+            const res = await fetch("/api/banned-ips", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(formData),
+            });
+            const data = await res.json();
+            if (data.success) {
+                showToast("IP berhasil di-ban!", "success");
+                setShowModal(false);
+                setFormData({ ip: "", reason: "", duration: "24h" });
+                invalidateCache("/api/banned-ips");
+                fetchBannedIPs(true);
+            } else {
+                showToast(data.error || "Gagal ban IP", "error");
+            }
+        } catch {
+            showToast("Terjadi kesalahan", "error");
+        } finally {
+            setSubmitting(false);
+        }
+    }
+
+    async function handleUnban(id: string) {
+        if (!confirm("Yakin ingin unban IP ini?")) return;
+        try {
+            const res = await fetch(`/api/banned-ips?id=${id}`, { method: "DELETE" });
+            const data = await res.json();
+            if (data.success) {
+                showToast("IP berhasil di-unban!", "success");
+                invalidateCache("/api/banned-ips");
+                fetchBannedIPs(true);
+            } else {
+                showToast(data.error || "Gagal unban IP", "error");
+            }
+        } catch {
+            showToast("Terjadi kesalahan", "error");
+        }
+    }
+
+    const now = new Date();
+    const activeBans = bannedIPs.filter(ip => !ip.expiresAt || new Date(ip.expiresAt) > now);
+    const permanentBans = bannedIPs.filter(ip => !ip.expiresAt);
+    const recentBans = bannedIPs.filter(ip => {
+        const created = new Date(ip.createdAt);
+        return (now.getTime() - created.getTime()) < 24 * 60 * 60 * 1000;
+    });
+
+    const filteredIPs = bannedIPs.filter(ip => {
+        const matchSearch = ip.ip.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            ip.reason.toLowerCase().includes(searchTerm.toLowerCase());
+
+        if (!matchSearch) return false;
+
+        const isExpired = ip.expiresAt && new Date(ip.expiresAt) <= now;
+        const isPermanent = !ip.expiresAt;
+
+        switch (filter) {
+            case "active": return !isExpired;
+            case "expired": return isExpired;
+            case "permanent": return isPermanent;
+            default: return true;
+        }
+    });
+
+    const filteredActivities = loginActivities.filter(activity =>
+        activity.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        activity.ip.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
+    if (loading) return <LoadingSkeleton />;
+
+    return (
+        <div className="space-y-6">
+            <div className="flex items-center justify-between">
+                <div>
+                    <h1 className="text-2xl font-bold mb-2">🛡️ Security Center</h1>
+                    <p className="text-zinc-500">Manage banned IPs and monitor login activity</p>
+                </div>
+                {activeSecurityTab === "banned" && (
+                    <button onClick={() => setShowModal(true)} className="btn-primary">
+                        🚫 Ban IP
+                    </button>
+                )}
+            </div>
+
+            {/* Security Tabs */}
+            <div className="flex gap-2 border-b border-zinc-800 pb-2">
+                <button
+                    onClick={() => setActiveSecurityTab("banned")}
+                    className={`px-4 py-2 rounded-t-lg font-medium transition-all ${activeSecurityTab === "banned"
+                        ? "bg-green-500/20 text-green-400 border-b-2 border-green-500"
+                        : "text-zinc-400 hover:text-zinc-200"
+                        }`}
+                >
+                    🚫 Banned IPs ({activeBans.length})
+                </button>
+                <button
+                    onClick={() => setActiveSecurityTab("activity")}
+                    className={`px-4 py-2 rounded-t-lg font-medium transition-all ${activeSecurityTab === "activity"
+                        ? "bg-green-500/20 text-green-400 border-b-2 border-green-500"
+                        : "text-zinc-400 hover:text-zinc-200"
+                        }`}
+                >
+                    📋 Login Activity ({loginStats?.totalToday || 0} today)
+                </button>
+            </div>
+
+            {activeSecurityTab === "banned" ? (
+                <>
+                    {/* Stats Cards */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div className="card glass-hover">
+                            <div className="flex items-start justify-between">
+                                <div>
+                                    <p className="text-zinc-500 text-sm mb-1">Total Banned</p>
+                                    <p className="text-3xl font-bold">{bannedIPs.length}</p>
+                                </div>
+                                <div className="text-3xl">🚫</div>
+                            </div>
+                            <div className="mt-4 text-sm text-zinc-500">All time bans</div>
+                        </div>
+                        <div className="card glass-hover">
+                            <div className="flex items-start justify-between">
+                                <div>
+                                    <p className="text-zinc-500 text-sm mb-1">Active Bans</p>
+                                    <p className="text-3xl font-bold text-red-400">{activeBans.length}</p>
+                                </div>
+                                <div className="text-3xl">🔒</div>
+                            </div>
+                            <div className="mt-4 text-sm text-red-400">Currently blocked</div>
+                        </div>
+                        <div className="card glass-hover">
+                            <div className="flex items-start justify-between">
+                                <div>
+                                    <p className="text-zinc-500 text-sm mb-1">Permanent Bans</p>
+                                    <p className="text-3xl font-bold text-orange-400">{permanentBans.length}</p>
+                                </div>
+                                <div className="text-3xl">⛔</div>
+                            </div>
+                            <div className="mt-4 text-sm text-orange-400">No expiration</div>
+                        </div>
+                        <div className="card glass-hover">
+                            <div className="flex items-start justify-between">
+                                <div>
+                                    <p className="text-zinc-500 text-sm mb-1">Recent (24h)</p>
+                                    <p className="text-3xl font-bold text-yellow-400">{recentBans.length}</p>
+                                </div>
+                                <div className="text-3xl">⚡</div>
+                            </div>
+                            <div className="mt-4 text-sm text-yellow-400">New bans today</div>
+                        </div>
+                    </div>
+
+                    {/* Filters */}
+                    <div className="flex flex-wrap gap-4 items-center">
+                        <div className="flex-1 min-w-[200px]">
+                            <input
+                                type="text"
+                                placeholder="🔍 Search IP or reason..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="w-full px-4 py-3 rounded-lg bg-zinc-900/50 border border-zinc-800 focus:border-green-500 focus:outline-none"
+                            />
+                        </div>
+                        <div className="flex gap-2">
+                            {(["all", "active", "expired", "permanent"] as const).map((f) => (
+                                <button
+                                    key={f}
+                                    onClick={() => setFilter(f)}
+                                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${filter === f
+                                        ? "bg-green-500/20 text-green-400 border border-green-500/30"
+                                        : "bg-zinc-800/50 text-zinc-400 hover:bg-zinc-700/50"
+                                        }`}
+                                >
+                                    {f.charAt(0).toUpperCase() + f.slice(1)}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Banned IPs Table */}
+                    <div className="card overflow-hidden">
+                        <table className="w-full">
+                            <thead>
+                                <tr className="border-b border-zinc-800">
+                                    <th className="text-left py-4 px-4 text-zinc-400 font-medium">IP Address</th>
+                                    <th className="text-left py-4 px-4 text-zinc-400 font-medium">Reason</th>
+                                    <th className="text-left py-4 px-4 text-zinc-400 font-medium">Status</th>
+                                    <th className="text-left py-4 px-4 text-zinc-400 font-medium">Expires</th>
+                                    <th className="text-left py-4 px-4 text-zinc-400 font-medium">Banned</th>
+                                    <th className="text-left py-4 px-4 text-zinc-400 font-medium">Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {filteredIPs.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={6} className="py-8 text-center text-zinc-500">
+                                            {searchTerm || filter !== "all" ? "No matching IPs found" : "No banned IPs yet"}
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    filteredIPs.map((ip) => {
+                                        const isExpired = ip.expiresAt && new Date(ip.expiresAt) <= now;
+                                        const isPermanent = !ip.expiresAt;
+
+                                        return (
+                                            <tr key={ip.id} className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors">
+                                                <td className="py-4 px-4">
+                                                    <code className="text-green-400 bg-zinc-800/50 px-2 py-1 rounded">
+                                                        {ip.ip}
+                                                    </code>
+                                                </td>
+                                                <td className="py-4 px-4 text-zinc-300 max-w-[200px] truncate">
+                                                    {ip.reason}
+                                                </td>
+                                                <td className="py-4 px-4">
+                                                    <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs ${isExpired
+                                                        ? "bg-zinc-500/20 text-zinc-400"
+                                                        : isPermanent
+                                                            ? "bg-red-500/20 text-red-400"
+                                                            : "bg-yellow-500/20 text-yellow-400"
+                                                        }`}>
+                                                        <span className={`w-1.5 h-1.5 rounded-full ${isExpired
+                                                            ? "bg-zinc-400"
+                                                            : isPermanent
+                                                                ? "bg-red-400"
+                                                                : "bg-yellow-400"
+                                                            }`} />
+                                                        {isExpired ? "Expired" : isPermanent ? "Permanent" : "Active"}
+                                                    </span>
+                                                </td>
+                                                <td className="py-4 px-4 text-zinc-400 text-sm">
+                                                    {ip.expiresAt
+                                                        ? new Date(ip.expiresAt).toLocaleString("id-ID", {
+                                                            day: "numeric",
+                                                            month: "short",
+                                                            hour: "2-digit",
+                                                            minute: "2-digit"
+                                                        })
+                                                        : "Never"}
+                                                </td>
+                                                <td className="py-4 px-4 text-zinc-500 text-sm">
+                                                    {getRelativeTime(ip.createdAt)}
+                                                </td>
+                                                <td className="py-4 px-4">
+                                                    <button
+                                                        onClick={() => handleUnban(ip.id)}
+                                                        className="px-3 py-1.5 rounded-lg text-sm bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-all"
+                                                    >
+                                                        Unban
+                                                    </button>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </>
+            ) : (
+                <>
+                    {/* Login Activity Stats */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div className="card glass-hover">
+                            <div className="flex items-start justify-between">
+                                <div>
+                                    <p className="text-zinc-500 text-sm mb-1">Total (24h)</p>
+                                    <p className="text-3xl font-bold">{loginStats?.totalToday || 0}</p>
+                                </div>
+                                <div className="text-3xl">📊</div>
+                            </div>
+                            <div className="mt-4 text-sm text-zinc-500">Login attempts</div>
+                        </div>
+                        <div className="card glass-hover">
+                            <div className="flex items-start justify-between">
+                                <div>
+                                    <p className="text-zinc-500 text-sm mb-1">Successful</p>
+                                    <p className="text-3xl font-bold text-green-400">{loginStats?.successToday || 0}</p>
+                                </div>
+                                <div className="text-3xl">✅</div>
+                            </div>
+                            <div className="mt-4 text-sm text-green-400">Verified logins</div>
+                        </div>
+                        <div className="card glass-hover">
+                            <div className="flex items-start justify-between">
+                                <div>
+                                    <p className="text-zinc-500 text-sm mb-1">Failed</p>
+                                    <p className="text-3xl font-bold text-red-400">{loginStats?.failedToday || 0}</p>
+                                </div>
+                                <div className="text-3xl">❌</div>
+                            </div>
+                            <div className="mt-4 text-sm text-red-400">Wrong credentials</div>
+                        </div>
+                        <div className="card glass-hover">
+                            <div className="flex items-start justify-between">
+                                <div>
+                                    <p className="text-zinc-500 text-sm mb-1">Unique IPs</p>
+                                    <p className="text-3xl font-bold text-blue-400">{loginStats?.uniqueIPs || 0}</p>
+                                </div>
+                                <div className="text-3xl">🌐</div>
+                            </div>
+                            <div className="mt-4 text-sm text-blue-400">Different sources</div>
+                        </div>
+                    </div>
+
+                    {/* Activity Filters */}
+                    <div className="flex flex-wrap gap-4 items-center">
+                        <div className="flex-1 min-w-[200px]">
+                            <input
+                                type="text"
+                                placeholder="🔍 Search email or IP..."
+                                value={searchTerm}
+                                onChange={(e) => setSearchTerm(e.target.value)}
+                                className="w-full px-4 py-3 rounded-lg bg-zinc-900/50 border border-zinc-800 focus:border-green-500 focus:outline-none"
+                            />
+                        </div>
+                        <div className="flex gap-2">
+                            {(["all", "success", "failed", "blocked"] as const).map((s) => (
+                                <button
+                                    key={s}
+                                    onClick={() => setStatusFilter(s)}
+                                    className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${statusFilter === s
+                                        ? "bg-green-500/20 text-green-400 border border-green-500/30"
+                                        : "bg-zinc-800/50 text-zinc-400 hover:bg-zinc-700/50"
+                                        }`}
+                                >
+                                    {s.charAt(0).toUpperCase() + s.slice(1)}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Login Activity Table */}
+                    <div className="card overflow-hidden">
+                        <table className="w-full">
+                            <thead>
+                                <tr className="border-b border-zinc-800">
+                                    <th className="text-left py-4 px-4 text-zinc-400 font-medium">Email</th>
+                                    <th className="text-left py-4 px-4 text-zinc-400 font-medium">IP</th>
+                                    <th className="text-left py-4 px-4 text-zinc-400 font-medium">Device</th>
+                                    <th className="text-left py-4 px-4 text-zinc-400 font-medium">Status</th>
+                                    <th className="text-left py-4 px-4 text-zinc-400 font-medium">Reason</th>
+                                    <th className="text-left py-4 px-4 text-zinc-400 font-medium">Time</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {filteredActivities.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={6} className="py-8 text-center text-zinc-500">
+                                            No login activity recorded yet
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    filteredActivities.map((activity) => (
+                                        <tr key={activity.id} className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors">
+                                            <td className="py-4 px-4">
+                                                <div>
+                                                    <p className="font-medium">{activity.user?.name || activity.email}</p>
+                                                    <p className="text-xs text-zinc-500">{activity.email}</p>
+                                                </div>
+                                            </td>
+                                            <td className="py-4 px-4">
+                                                <code className="text-green-400 bg-zinc-800/50 px-2 py-1 rounded text-sm">
+                                                    {activity.ip}
+                                                </code>
+                                            </td>
+                                            <td className="py-4 px-4 text-zinc-400 text-sm">
+                                                <div className="flex items-center gap-2">
+                                                    <span>{activity.device === "mobile" ? "📱" : activity.device === "tablet" ? "📱" : "💻"}</span>
+                                                    <div>
+                                                        <p>{activity.browser}</p>
+                                                        <p className="text-xs text-zinc-500">{activity.os}</p>
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td className="py-4 px-4">
+                                                <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs ${activity.status === "success"
+                                                    ? "bg-green-500/20 text-green-400"
+                                                    : activity.status === "blocked"
+                                                        ? "bg-red-500/20 text-red-400"
+                                                        : "bg-yellow-500/20 text-yellow-400"
+                                                    }`}>
+                                                    <span className={`w-1.5 h-1.5 rounded-full ${activity.status === "success"
+                                                        ? "bg-green-400"
+                                                        : activity.status === "blocked"
+                                                            ? "bg-red-400"
+                                                            : "bg-yellow-400"
+                                                        }`} />
+                                                    {activity.status.charAt(0).toUpperCase() + activity.status.slice(1)}
+                                                </span>
+                                            </td>
+                                            <td className="py-4 px-4 text-zinc-500 text-sm">
+                                                {activity.reason || "-"}
+                                            </td>
+                                            <td className="py-4 px-4 text-zinc-500 text-sm">
+                                                {getRelativeTime(activity.createdAt)}
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+                </>
+            )}
+
+            {/* Ban IP Modal */}
+            <Modal isOpen={showModal} onClose={() => setShowModal(false)} title="🚫 Ban IP Address">
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <div>
+                        <label className="block text-sm text-zinc-400 mb-2">IP Address</label>
+                        <input
+                            type="text"
+                            value={formData.ip}
+                            onChange={(e) => setFormData({ ...formData, ip: e.target.value })}
+                            className="w-full px-4 py-3 rounded-lg bg-zinc-900/50 border border-zinc-800 focus:border-green-500 focus:outline-none"
+                            placeholder="192.168.1.1 or IPv6"
+                            required
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm text-zinc-400 mb-2">Reason</label>
+                        <textarea
+                            value={formData.reason}
+                            onChange={(e) => setFormData({ ...formData, reason: e.target.value })}
+                            className="w-full px-4 py-3 rounded-lg bg-zinc-900/50 border border-zinc-800 focus:border-green-500 focus:outline-none resize-none"
+                            rows={3}
+                            placeholder="Reason for banning this IP..."
+                            required
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm text-zinc-400 mb-2">Duration</label>
+                        <select
+                            value={formData.duration}
+                            onChange={(e) => setFormData({ ...formData, duration: e.target.value })}
+                            className="w-full px-4 py-3 rounded-lg bg-zinc-900/50 border border-zinc-800 focus:border-green-500 focus:outline-none"
+                        >
+                            <option value="1h">1 Hour</option>
+                            <option value="24h">24 Hours</option>
+                            <option value="7d">7 Days</option>
+                            <option value="30d">30 Days</option>
+                            <option value="permanent">Permanent</option>
+                        </select>
+                    </div>
+                    <button
+                        type="submit"
+                        disabled={submitting}
+                        className="w-full btn-primary disabled:opacity-50"
+                    >
+                        {submitting ? "Banning..." : "🚫 Ban IP"}
+                    </button>
+                </form>
+            </Modal>
+        </div>
+    );
+}
+
 // Settings Section
 function SettingsSection() {
     return (
@@ -1236,6 +2152,8 @@ export default function Dashboard() {
                 return <MessagesSection showToast={showToast} agents={agents} user={user} />;
             case "monitoring":
                 return <MonitoringSection />;
+            case "security":
+                return <SecuritySection showToast={showToast} />;
             case "settings":
                 return <SettingsSection />;
             default:

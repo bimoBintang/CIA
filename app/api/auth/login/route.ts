@@ -5,6 +5,64 @@ import { checkRateLimit, LOGIN_RATE_LIMIT, resetRateLimit } from '@/lib/rate-lim
 import { isValidEmail } from '@/lib/validation';
 import { trackFailedLogin, securityCheck } from '@/lib/security';
 
+// Helper to parse user agent
+function parseUserAgent(userAgent: string) {
+    const ua = userAgent.toLowerCase();
+    
+    // Device
+    let device = 'desktop';
+    if (/mobile|android|iphone|ipad|ipod/.test(ua)) {
+        device = /ipad|tablet/.test(ua) ? 'tablet' : 'mobile';
+    }
+    
+    // Browser
+    let browser = 'Unknown';
+    if (ua.includes('firefox')) browser = 'Firefox';
+    else if (ua.includes('edg')) browser = 'Edge';
+    else if (ua.includes('chrome')) browser = 'Chrome';
+    else if (ua.includes('safari')) browser = 'Safari';
+    else if (ua.includes('opera')) browser = 'Opera';
+    
+    // OS
+    let os = 'Unknown';
+    if (ua.includes('windows')) os = 'Windows';
+    else if (ua.includes('mac')) os = 'macOS';
+    else if (ua.includes('linux')) os = 'Linux';
+    else if (ua.includes('android')) os = 'Android';
+    else if (ua.includes('iphone') || ua.includes('ipad')) os = 'iOS';
+    
+    return { device, browser, os };
+}
+
+// Log login activity
+async function logLoginActivity(data: {
+    userId?: string;
+    email: string;
+    ip: string;
+    userAgent: string;
+    status: 'success' | 'failed' | 'blocked';
+    reason?: string;
+}) {
+    try {
+        const { device, browser, os } = parseUserAgent(data.userAgent);
+        await prisma.loginActivity.create({
+            data: {
+                userId: data.userId,
+                email: data.email,
+                ip: data.ip,
+                userAgent: data.userAgent,
+                device,
+                browser,
+                os,
+                status: data.status,
+                reason: data.reason,
+            },
+        });
+    } catch (error) {
+        console.error('Failed to log login activity:', error);
+    }
+}
+
 // POST - Login
 export async function POST(request: NextRequest) {
     try {
@@ -12,6 +70,7 @@ export async function POST(request: NextRequest) {
         const ip = request.headers.get('x-forwarded-for')?.split(',')[0] ||
             request.headers.get('x-real-ip') ||
             'unknown';
+        const userAgent = request.headers.get('user-agent') || 'unknown';
 
         const body = await request.json();
         const { email, password } = body;
@@ -37,6 +96,13 @@ export async function POST(request: NextRequest) {
 
         if (!rateLimit.allowed) {
             const retryAfter = Math.ceil(rateLimit.resetIn / 1000);
+            await logLoginActivity({
+                email,
+                ip,
+                userAgent,
+                status: 'blocked',
+                reason: 'Rate limited',
+            });
             return NextResponse.json(
                 {
                     success: false,
@@ -71,6 +137,13 @@ export async function POST(request: NextRequest) {
         if (!user) {
             // Track failed login for auto-ban
             const banned = await trackFailedLogin(ip);
+            await logLoginActivity({
+                email,
+                ip,
+                userAgent,
+                status: banned ? 'blocked' : 'failed',
+                reason: 'User not found',
+            });
             if (banned) {
                 return NextResponse.json(
                     { success: false, error: 'Your IP has been temporarily banned due to too many failed attempts' },
@@ -88,6 +161,14 @@ export async function POST(request: NextRequest) {
         if (!isValid) {
             // Track failed login for auto-ban
             const banned = await trackFailedLogin(ip);
+            await logLoginActivity({
+                userId: user.id,
+                email,
+                ip,
+                userAgent,
+                status: banned ? 'blocked' : 'failed',
+                reason: 'Wrong password',
+            });
             if (banned) {
                 return NextResponse.json(
                     { success: false, error: 'Your IP has been temporarily banned due to too many failed attempts' },
@@ -123,6 +204,15 @@ export async function POST(request: NextRequest) {
             });
         }
 
+        // Log successful login
+        await logLoginActivity({
+            userId: user.id,
+            email,
+            ip,
+            userAgent,
+            status: 'success',
+        });
+
         const response = NextResponse.json({
             success: true,
             data: {
@@ -149,3 +239,4 @@ export async function POST(request: NextRequest) {
         );
     }
 }
+

@@ -16,15 +16,16 @@ enum Role {
 }
 
 model User {
-  id        String   @id @default(cuid())
-  email     String   @unique
-  password  String
-  name      String
-  role      Role     @default(AGENT)
-  agentId   String?  @unique
-  agent     Agent?   @relation(fields: [agentId], references: [id])
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id              String          @id @default(cuid())
+  email           String          @unique
+  password        String
+  name            String
+  role            Role            @default(AGENT)
+  agentId         String?         @unique
+  agent           Agent?          @relation(fields: [agentId], references: [id])
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  loginActivities LoginActivity[]
 }
 
 model Agent {
@@ -39,9 +40,11 @@ model Agent {
   updatedAt DateTime @updatedAt
 
   user             User?
-  sentMessages     Message[] @relation("SentMessages")
-  receivedMessages Message[] @relation("ReceivedMessages")
+  sentMessages     Message[]        @relation("SentMessages")
+  receivedMessages Message[]        @relation("ReceivedMessages")
   intelReports     Intel[]
+  channelMembers   ChannelMember[]
+  channelMessages  ChannelMessage[]
 }
 
 model Operation {
@@ -56,24 +59,26 @@ model Operation {
 }
 
 model Intel {
-  id        String   @id @default(cuid())
-  title     String
-  content   String?
-  priority  String   @default("low")
-  sourceId  String
-  source    Agent    @relation(fields: [sourceId], references: [id])
-  createdAt DateTime @default(now())
+  id          String   @id @default(cuid())
+  title       String
+  content     String?
+  priority    String   @default("low")
+  attachments String[] // file URLs
+  sourceId    String
+  source      Agent    @relation(fields: [sourceId], references: [id])
+  createdAt   DateTime @default(now())
 }
 
 model Message {
-  id        String   @id @default(cuid())
-  content   String
-  read      Boolean  @default(false)
-  fromId    String
-  toId      String
-  fromAgent Agent    @relation("SentMessages", fields: [fromId], references: [id])
-  toAgent   Agent    @relation("ReceivedMessages", fields: [toId], references: [id])
-  createdAt DateTime @default(now())
+  id          String   @id @default(cuid())
+  content     String
+  read        Boolean  @default(false)
+  attachments String[] // file URLs
+  fromId      String
+  toId        String
+  fromAgent   Agent    @relation("SentMessages", fields: [fromId], references: [id])
+  toAgent     Agent    @relation("ReceivedMessages", fields: [toId], references: [id])
+  createdAt   DateTime @default(now())
 }
 
 model Application {
@@ -115,4 +120,73 @@ model BannedIP {
 
   @@index([ip])
   @@index([expiresAt])
+}
+
+model LoginActivity {
+  id        String   @id @default(cuid())
+  userId    String? // null if login failed
+  email     String // attempted email
+  ip        String
+  userAgent String
+  device    String // mobile, tablet, desktop
+  browser   String
+  os        String
+  status    String // success, failed, blocked
+  reason    String? // failure reason
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([ip])
+  @@index([createdAt])
+  @@index([status])
+}
+
+// ============ Channels & Group Messages ============
+
+model Channel {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  type        String   @default("group") // group, broadcast, announcement
+  createdBy   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  members  ChannelMember[]
+  messages ChannelMessage[]
+
+  @@index([type])
+}
+
+model ChannelMember {
+  id        String   @id @default(cuid())
+  channelId String
+  agentId   String
+  role      String   @default("member") // admin, member
+  joinedAt  DateTime @default(now())
+
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  agent   Agent   @relation(fields: [agentId], references: [id])
+
+  @@unique([channelId, agentId])
+  @@index([channelId])
+  @@index([agentId])
+}
+
+model ChannelMessage {
+  id          String   @id @default(cuid())
+  channelId   String
+  senderId    String
+  content     String
+  attachments String[] // array of file URLs
+  createdAt   DateTime @default(now())
+
+  channel Channel @relation(fields: [channelId], references: [id], onDelete: Cascade)
+  sender  Agent   @relation(fields: [senderId], references: [id])
+
+  @@index([channelId])
+  @@index([senderId])
+  @@index([createdAt])
 }
