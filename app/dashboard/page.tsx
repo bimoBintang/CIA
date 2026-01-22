@@ -13,6 +13,12 @@ const AlbumsSection = dynamic(() => import("@/components/dashboard/AlbumsSection
     ssr: false,
 });
 
+// Lazy load NewsSection
+const NewsSection = dynamic(() => import("@/components/dashboard/NewsSection"), {
+    loading: () => <div className="flex items-center justify-center py-20"><span className="text-zinc-500">Memuat berita...</span></div>,
+    ssr: false,
+});
+
 // Types
 interface User {
     id: string;
@@ -167,7 +173,7 @@ function Sidebar({ activeTab, setActiveTab, user, onLogout }: {
         { id: "agents", label: "Agents", icon: "🕵️", permission: "canViewAgents" as const },
         { id: "operations", label: "Operations", icon: "🎯", permission: "canViewOperations" as const },
         { id: "intel", label: "Intel Feed", icon: "📡", permission: "canViewIntel" as const },
-        { id: "messages", label: "Messages", icon: "💬", permission: "canViewMessages" as const },
+        { id: "news", label: "Berita", icon: "📰", permission: "canViewMessages" as const },
         { id: "monitoring", label: "Monitoring", icon: "👁️", permission: "canManageUsers" as const },
         { id: "gallery", label: "Gallery", icon: "📸", permission: "canViewOperations" as const },
         { id: "security", label: "Security", icon: "🛡️", permission: "canManageUsers" as const },
@@ -2377,8 +2383,8 @@ export default function Dashboard() {
                 return <OperationsSection showToast={showToast} />;
             case "intel":
                 return <IntelSection showToast={showToast} agents={agents} />;
-            case "messages":
-                return <MessagesSection showToast={showToast} agents={agents} user={user} />;
+            case "news":
+                return <NewsSection showToast={showToast} />;
             case "monitoring":
                 return <MonitoringSection />;
             case "security":

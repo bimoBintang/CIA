@@ -20,8 +20,8 @@ export async function GET() {
             highPriorityCount,
             mediumPriorityCount,
             lowPriorityCount,
-            messageCount,
-            unreadCount,
+            newsCount,
+            publishedNewsCount,
             pendingAppCount,
         ] = await Promise.all([
             prisma.agent.count(),
@@ -39,8 +39,8 @@ export async function GET() {
             prisma.intel.count({ where: { priority: 'high' } }),
             prisma.intel.count({ where: { priority: 'medium' } }),
             prisma.intel.count({ where: { priority: 'low' } }),
-            prisma.message.count(),
-            prisma.message.count({ where: { read: false } }),
+            prisma.news.count(),
+            prisma.news.count({ where: { published: true } }),
             prisma.application.count({ where: { status: 'pending' } }),
         ]);
 
@@ -68,9 +68,9 @@ export async function GET() {
                 medium: mediumPriorityCount,
                 low: lowPriorityCount,
             },
-            messages: {
-                total: messageCount,
-                unread: unreadCount,
+            news: {
+                total: newsCount,
+                published: publishedNewsCount,
             },
             applications: {
                 pending: pendingAppCount,

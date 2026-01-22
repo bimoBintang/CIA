@@ -3,6 +3,7 @@
 import { AboutSection } from "@/components/common/about-section";
 import { EventsSection } from "@/components/common/event-section";
 import { HeroSection } from "@/components/common/hero-section";
+import { NewsSection } from "@/components/common/news-section";
 import { useEffect, useState } from "react";
 
 // Matrix Rain Component
@@ -75,6 +76,9 @@ function Navigation() {
           </a>
           <a href="#events" className="text-zinc-400 hover:text-green-400 transition-colors">
             Events
+          </a>
+          <a href="#news" className="text-zinc-400 hover:text-green-400 transition-colors">
+            Berita
           </a>
           <a href="#community" className="text-zinc-400 hover:text-green-400 transition-colors">
             Komunitas
@@ -242,6 +246,7 @@ export default function Home() {
         <HeroSection />
         <AboutSection />
         <EventsSection />
+        <NewsSection />
         <CommunitySection />
         <ContactSection />
       </main>

@@ -44,12 +44,11 @@ model Agent {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user             User?
-  sentMessages     Message[]        @relation("SentMessages")
-  receivedMessages Message[]        @relation("ReceivedMessages")
-  intelReports     Intel[]
-  channelMembers   ChannelMember[]
-  channelMessages  ChannelMessage[]
+  user            User?
+  newsArticles    News[]
+  intelReports    Intel[]
+  channelMembers  ChannelMember[]
+  channelMessages ChannelMessage[]
 }
 
 model Operation {
@@ -90,16 +89,18 @@ model Intel {
   createdAt   DateTime @default(now())
 }
 
-model Message {
-  id          String   @id @default(cuid())
-  content     String
-  read        Boolean  @default(false)
-  attachments String[] // file URLs
-  fromId      String
-  toId        String
-  fromAgent   Agent    @relation("SentMessages", fields: [fromId], references: [id])
-  toAgent     Agent    @relation("ReceivedMessages", fields: [toId], references: [id])
-  createdAt   DateTime @default(now())
+model News {
+  id         String   @id @default(cuid())
+  title      String
+  content    String
+  excerpt    String?
+  coverImage String?
+  category   String   @default("general") // general, event, announcement, update
+  published  Boolean  @default(false)
+  authorId   String?
+  author     Agent?   @relation(fields: [authorId], references: [id])
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }
 
 model Application {

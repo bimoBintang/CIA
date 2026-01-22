@@ -14,8 +14,9 @@ async function main() {
     console.log('🌱 Seeding database...');
 
     // Clear existing data
-    await prisma.message.deleteMany();
+    await prisma.news.deleteMany();
     await prisma.intel.deleteMany();
+    await prisma.operationPlan.deleteMany();
     await prisma.operation.deleteMany();
     await prisma.application.deleteMany();
     await prisma.agent.deleteMany();
@@ -93,7 +94,9 @@ async function main() {
         prisma.operation.create({
             data: {
                 name: 'Operation Shadow',
+                description: 'Misi investigasi kebocoran data akademik',
                 status: 'active',
+                priority: 'high',
                 progress: 75,
                 deadline: new Date('2026-01-25'),
                 teamSize: 5,
@@ -102,7 +105,9 @@ async function main() {
         prisma.operation.create({
             data: {
                 name: 'Project Midnight',
+                description: 'Operasi pengamanan event kampus',
                 status: 'active',
+                priority: 'medium',
                 progress: 45,
                 deadline: new Date('2026-02-01'),
                 teamSize: 3,
@@ -111,7 +116,9 @@ async function main() {
         prisma.operation.create({
             data: {
                 name: 'Intel Sweep Alpha',
+                description: 'Pengumpulan intel dari seluruh fakultas',
                 status: 'planning',
+                priority: 'low',
                 progress: 10,
                 deadline: new Date('2026-02-15'),
                 teamSize: 8,
@@ -120,7 +127,9 @@ async function main() {
         prisma.operation.create({
             data: {
                 name: 'Campus Watch',
+                description: 'Pemantauan keamanan campus 24 jam',
                 status: 'completed',
+                priority: 'medium',
                 progress: 100,
                 deadline: new Date('2026-01-15'),
                 teamSize: 4,
@@ -176,43 +185,51 @@ async function main() {
 
     console.log(`✅ Created ${intelReports.length} intel reports`);
 
-    // Create Messages
-    const messages = await Promise.all([
-        prisma.message.create({
+    // Create News Articles
+    const newsArticles = await Promise.all([
+        prisma.news.create({
             data: {
-                content: 'Intel tentang event minggu depan sudah saya kirimkan ke sistem.',
-                read: false,
-                fromId: agents[2].id,
-                toId: agents[0].id,
+                title: 'Selamat Datang di Circle CIA',
+                content: 'Circle CIA adalah organisasi intelijen kampus yang berkomitmen untuk mengamankan dan menginformasikan komunitas kampus. Kami berdedikasi untuk menyediakan platform yang aman dan terpercaya.',
+                excerpt: 'Organisasi intelijen kampus yang berkomitmen untuk komunitas.',
+                category: 'announcement',
+                published: true,
+                authorId: agents[0].id,
             },
         }),
-        prisma.message.create({
+        prisma.news.create({
             data: {
-                content: 'Operasi Shadow update: target acquired. Menunggu konfirmasi untuk melanjutkan.',
-                read: false,
-                fromId: agents[1].id,
-                toId: agents[0].id,
+                title: 'Festival Musik Kampus 2026',
+                content: 'Festival musik tahunan kampus akan diadakan pada tanggal 15 Februari 2026 di lapangan utama. Acara ini akan menampilkan berbagai penampilan dari band-band lokal dan nasional.',
+                excerpt: 'Festival musik tahunan kampus akan diadakan 15 Februari 2026.',
+                category: 'event',
+                published: true,
+                authorId: agents[1].id,
             },
         }),
-        prisma.message.create({
+        prisma.news.create({
             data: {
-                content: 'Briefing besok jam 9 pagi di markas. Kehadiran wajib untuk semua senior agents.',
-                read: true,
-                fromId: agents[0].id,
-                toId: agents[1].id,
+                title: 'Update Sistem Keamanan v2.0',
+                content: 'Sistem keamanan Circle CIA telah diperbarui ke versi 2.0 dengan fitur-fitur baru termasuk deteksi ancaman yang lebih baik dan enkripsi end-to-end.',
+                excerpt: 'Sistem keamanan diperbarui dengan fitur deteksi ancaman baru.',
+                category: 'update',
+                published: true,
+                authorId: agents[0].id,
             },
         }),
-        prisma.message.create({
+        prisma.news.create({
             data: {
-                content: 'Request backup for mission di Fakultas FISIP. Intel lokasi sudah confirmed.',
-                read: true,
-                fromId: agents[3].id,
-                toId: agents[0].id,
+                title: 'Pengumuman Rekrutmen Agent Baru',
+                content: 'Circle CIA membuka kesempatan bagi mahasiswa yang ingin bergabung menjadi agent baru. Pendaftaran dibuka hingga akhir bulan.',
+                excerpt: 'Kesempatan bergabung menjadi agent Circle CIA.',
+                category: 'announcement',
+                published: false,
+                authorId: agents[0].id,
             },
         }),
     ]);
 
-    console.log(`✅ Created ${messages.length} messages`);
+    console.log(`✅ Created ${newsArticles.length} news articles`);
 
     console.log('🎉 Seeding completed!');
 }
