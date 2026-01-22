@@ -93,7 +93,7 @@ interface Stats {
     agents: { total: number; online: number; away: number; offline: number };
     operations: { total: number; active: number; planning: number; completed: number };
     intel: { total: number; high: number; medium: number; low: number };
-    messages: { total: number; unread: number };
+    news: { total: number; published: number };
 }
 
 // Helper function for relative time
