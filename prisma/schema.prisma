@@ -114,20 +114,28 @@ model Application {
 }
 
 model VisitorLog {
-  id        String   @id @default(cuid())
-  ip        String
-  userAgent String
-  device    String // mobile, tablet, desktop
-  browser   String // Chrome, Firefox, Safari, etc.
-  os        String // Windows, macOS, iOS, Android, etc.
-  country   String?
-  city      String?
-  page      String // visited page path
-  referer   String?
-  userId    String? // if logged in
-  createdAt DateTime @default(now())
+  id          String   @id @default(cuid())
+  ip          String
+  userAgent   String
+  device      String // mobile, tablet, desktop
+  browser     String // Chrome, Firefox, Safari, etc.
+  os          String // Windows, macOS, iOS, Android, etc.
+  country     String?
+  city        String?
+  region      String? // State/Province
+  isp         String? // Internet Service Provider
+  org         String? // Organization
+  timezone    String?
+  latitude    Float?
+  longitude   Float?
+  fingerprint String? // Device fingerprint from FingerprintJS
+  page        String // visited page path
+  referer     String?
+  userId      String? // if logged in
+  createdAt   DateTime @default(now())
 
   @@index([ip])
+  @@index([fingerprint])
   @@index([createdAt])
 }
 

@@ -1,11 +1,28 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
+import FingerprintJS from "@fingerprintjs/fingerprintjs";
 
 export function VisitorTracker() {
     const pathname = usePathname();
+    const fingerprintRef = useRef<string | null>(null);
 
+    // Initialize fingerprint once on mount
+    useEffect(() => {
+        async function initFingerprint() {
+            try {
+                const fp = await FingerprintJS.load();
+                const result = await fp.get();
+                fingerprintRef.current = result.visitorId;
+            } catch (error) {
+                console.debug("Fingerprint init:", error);
+            }
+        }
+        initFingerprint();
+    }, []);
+
+    // Log visit on page change
     useEffect(() => {
         async function logVisit() {
             try {
@@ -15,6 +32,7 @@ export function VisitorTracker() {
                     body: JSON.stringify({
                         page: pathname,
                         referer: document.referrer || null,
+                        fingerprint: fingerprintRef.current,
                     }),
                 });
             } catch (error) {
@@ -23,8 +41,8 @@ export function VisitorTracker() {
             }
         }
 
-        // Log visit after a short delay to not block initial render
-        const timer = setTimeout(logVisit, 1000);
+        // Log visit after a short delay to allow fingerprint to load
+        const timer = setTimeout(logVisit, 1500);
         return () => clearTimeout(timer);
     }, [pathname]);
 

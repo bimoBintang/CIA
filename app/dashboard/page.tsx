@@ -19,6 +19,12 @@ const NewsSection = dynamic(() => import("@/components/dashboard/NewsSection"), 
     ssr: false,
 });
 
+// Lazy load DeviceTrackingSection
+const DeviceTrackingSection = dynamic(() => import("@/components/dashboard/DeviceTrackingSection"), {
+    loading: () => <div className="flex items-center justify-center py-20"><span className="text-zinc-500">Memuat device tracking...</span></div>,
+    ssr: false,
+});
+
 // Types
 interface User {
     id: string;
@@ -2386,7 +2392,7 @@ export default function Dashboard() {
             case "news":
                 return <NewsSection showToast={showToast} />;
             case "monitoring":
-                return <MonitoringSection />;
+                return <DeviceTrackingSection />;
             case "security":
                 return <SecuritySection showToast={showToast} />;
             case "gallery":
