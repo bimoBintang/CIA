@@ -1,9 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentUser } from '@/lib/auth';
-import { writeFile, mkdir } from 'fs/promises';
-import { existsSync } from 'fs';
-import path from 'path';
+import { put, del } from '@vercel/blob';
 import crypto from 'crypto';
 
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
@@ -68,7 +66,7 @@ export async function GET(
     }
 }
 
-// POST - Upload photos to album
+// POST - Upload photos to album (using Vercel Blob)
 export async function POST(
     request: NextRequest,
     { params }: { params: Promise<{ id: string }> }
@@ -114,38 +112,35 @@ export async function POST(
             );
         }
 
-        // Create albums upload directory
-        const uploadsDir = path.join(process.cwd(), 'public', 'uploads', 'albums', albumId);
-        if (!existsSync(uploadsDir)) {
-            await mkdir(uploadsDir, { recursive: true });
-        }
-
         const uploadedPhotos = [];
 
         for (const file of files) {
-            // Validate
+            // Validate file type
             if (!ALLOWED_IMAGE_TYPES.includes(file.type)) {
-                continue; // Skip invalid files
+                console.log(`Skipping invalid file type: ${file.type}`);
+                continue;
             }
+
+            // Validate file size
             if (file.size > MAX_FILE_SIZE) {
-                continue; // Skip too large files
+                console.log(`Skipping too large file: ${file.size} bytes`);
+                continue;
             }
 
             const filename = generateSecureFilename(file.type);
-            const filePath = path.join(uploadsDir, filename);
+            const blobPath = `albums/${albumId}/${filename}`;
 
-            // Write file
-            const bytes = await file.arrayBuffer();
-            const buffer = Buffer.from(bytes);
-            await writeFile(filePath, buffer);
+            // Upload to Vercel Blob
+            const blob = await put(blobPath, file, {
+                access: 'public',
+                addRandomSuffix: false,
+            });
 
-            const url = `/uploads/albums/${albumId}/${filename}`;
-
-            // Create photo record
+            // Create photo record with blob URL
             const photo = await prisma.photo.create({
                 data: {
                     albumId,
-                    url,
+                    url: blob.url,
                     filename,
                     caption: caption || null,
                     size: file.size,
@@ -155,8 +150,15 @@ export async function POST(
             uploadedPhotos.push(photo);
         }
 
+        if (uploadedPhotos.length === 0) {
+            return NextResponse.json(
+                { success: false, error: 'No valid photos to upload' },
+                { status: 400 }
+            );
+        }
+
         // Update album cover if first photo
-        if (uploadedPhotos.length > 0 && !album.coverUrl) {
+        if (!album.coverUrl) {
             await prisma.album.update({
                 where: { id: albumId },
                 data: { coverUrl: uploadedPhotos[0].url },
@@ -218,6 +220,20 @@ export async function DELETE(
                 { success: false, error: 'Permission denied' },
                 { status: 403 }
             );
+        }
+
+        // Get photo to delete from blob storage
+        const photo = await prisma.photo.findUnique({
+            where: { id: photoId, albumId },
+        });
+
+        if (photo && photo.url.includes('blob.vercel-storage.com')) {
+            try {
+                await del(photo.url);
+            } catch (blobError) {
+                console.error('Error deleting blob:', blobError);
+                // Continue with database deletion even if blob deletion fails
+            }
         }
 
         await prisma.photo.delete({
