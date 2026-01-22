@@ -25,7 +25,7 @@ export async function GET() {
 export async function POST(request: Request) {
     try {
         const body = await request.json();
-        const { name, deadline, teamSize = 1, status = 'planning' } = body;
+        const { name, description, deadline, teamSize = 1, status = 'planning', priority = 'medium' } = body;
 
         if (!name || !deadline) {
             return NextResponse.json(
@@ -37,7 +37,9 @@ export async function POST(request: Request) {
         const newOperation = await prisma.operation.create({
             data: {
                 name,
+                description,
                 status,
+                priority,
                 progress: 0,
                 deadline: new Date(deadline),
                 teamSize,

@@ -56,8 +56,8 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Only ADMIN and SENIOR_AGENT can create albums
-        if (!['ADMIN', 'SENIOR_AGENT'].includes(currentUser.role)) {
+        // Only ADMIN and SENIOR_AGENT, AGENT can create albums
+        if (!['ADMIN', 'SENIOR_AGENT', 'AGENT'].includes(currentUser.role)) {
             return NextResponse.json(
                 { success: false, error: 'Permission denied' },
                 { status: 403 }

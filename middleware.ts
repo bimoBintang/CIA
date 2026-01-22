@@ -13,6 +13,23 @@ const authRoutes = ['/login'];
 const bannedIPCache = new Map<string, { banned: boolean; expiresAt: number }>();
 const CACHE_TTL = 60000; // 1 minute
 
+// Get client IP with Cloudflare support (inline for Edge Runtime)
+function getClientIP(request: NextRequest): string {
+    // Cloudflare header (most reliable)
+    const cfIP = request.headers.get('cf-connecting-ip');
+    if (cfIP) return cfIP.trim();
+
+    // Real IP (Nginx/proxies)
+    const realIP = request.headers.get('x-real-ip');
+    if (realIP) return realIP.trim();
+
+    // X-Forwarded-For (first IP)
+    const forwardedFor = request.headers.get('x-forwarded-for');
+    if (forwardedFor) return forwardedFor.split(',')[0].trim();
+
+    return 'unknown';
+}
+
 async function checkBannedIP(ip: string, baseUrl: string): Promise<{ banned: boolean; reason?: string }> {
     // Check cache first
     const cached = bannedIPCache.get(ip);
@@ -43,10 +60,8 @@ async function checkBannedIP(ip: string, baseUrl: string): Promise<{ banned: boo
 export async function middleware(request: NextRequest) {
     const { pathname } = request.nextUrl;
 
-    // Get client IP
-    const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
-        request.headers.get('x-real-ip') ||
-        'unknown';
+    // Get client IP (supports Cloudflare)
+    const ip = getClientIP(request);
 
     // Check if IP is banned (skip for API routes to avoid infinite loop)
     if (!pathname.startsWith('/api/banned-ips')) {

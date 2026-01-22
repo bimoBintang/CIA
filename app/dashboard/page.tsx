@@ -37,13 +37,28 @@ interface Agent {
     createdAt: string;
 }
 
+interface OperationPlan {
+    id: string;
+    operationId: string;
+    title: string;
+    content?: string;
+    status: string;
+    attachments?: string[];
+    createdAt: string;
+}
+
 interface Operation {
     id: string;
     name: string;
+    description?: string;
     status: string;
+    priority?: string;
     progress: number;
     deadline: string;
     teamSize: number;
+    attachments?: string[];
+    plans?: OperationPlan[];
+    createdAt?: string;
 }
 
 interface Intel {
@@ -51,6 +66,7 @@ interface Intel {
     title: string;
     content: string | null;
     priority: string;
+    attachments?: string[];
     createdAt: string;
     source?: { codename: string };
 }
@@ -621,7 +637,8 @@ function OperationsSection({ showToast }: { showToast: (msg: string, type: "succ
     const [operations, setOperations] = useState<Operation[]>([]);
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
-    const [formData, setFormData] = useState({ name: "", deadline: "", teamSize: 1 });
+    const [selectedOp, setSelectedOp] = useState<string | null>(null);
+    const [formData, setFormData] = useState({ name: "", description: "", deadline: "", teamSize: 1, priority: "medium" });
     const [submitting, setSubmitting] = useState(false);
 
     const fetchOperations = useCallback(async (force = false) => {
@@ -652,7 +669,7 @@ function OperationsSection({ showToast }: { showToast: (msg: string, type: "succ
             if (data.success) {
                 showToast("Operation berhasil dibuat!", "success");
                 setShowModal(false);
-                setFormData({ name: "", deadline: "", teamSize: 1 });
+                setFormData({ name: "", description: "", deadline: "", teamSize: 1, priority: "medium" });
                 invalidateCache("/api/operations");
                 invalidateCache("/api/stats");
                 fetchOperations(true);
@@ -666,45 +683,149 @@ function OperationsSection({ showToast }: { showToast: (msg: string, type: "succ
         }
     }
 
+    const getStatusStyles = (status: string) => {
+        switch (status) {
+            case "active": return { bg: "bg-green-500/20", text: "text-green-400", icon: "🟢" };
+            case "planning": return { bg: "bg-yellow-500/20", text: "text-yellow-400", icon: "🟡" };
+            case "completed": return { bg: "bg-blue-500/20", text: "text-blue-400", icon: "✅" };
+            default: return { bg: "bg-zinc-500/20", text: "text-zinc-400", icon: "⚪" };
+        }
+    };
+
+    const getPriorityStyles = (priority: string = "medium") => {
+        switch (priority) {
+            case "high": return { bg: "bg-red-500/20", text: "text-red-400", label: "🔴 High" };
+            case "medium": return { bg: "bg-yellow-500/20", text: "text-yellow-400", label: "🟡 Medium" };
+            default: return { bg: "bg-blue-500/20", text: "text-blue-400", label: "🔵 Low" };
+        }
+    };
+
+    const getDaysRemaining = (deadline: string) => {
+        const diff = new Date(deadline).getTime() - Date.now();
+        const days = Math.ceil(diff / (1000 * 60 * 60 * 24));
+        if (days < 0) return { text: `${Math.abs(days)} hari lewat`, color: "text-red-400" };
+        if (days === 0) return { text: "Hari ini!", color: "text-yellow-400" };
+        if (days <= 3) return { text: `${days} hari lagi`, color: "text-yellow-400" };
+        return { text: `${days} hari lagi`, color: "text-zinc-400" };
+    };
+
     if (loading) return <LoadingSkeleton />;
 
     return (
         <div className="space-y-6">
             <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-2xl font-bold mb-2">Operations</h1>
+                    <h1 className="text-2xl font-bold mb-2">🎯 Operations</h1>
                     <p className="text-zinc-500">Track and manage ongoing operations ({operations.length} total)</p>
                 </div>
                 <button onClick={() => setShowModal(true)} className="btn-primary">+ New Operation</button>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {operations.map((op) => (
-                    <div key={op.id} className="card glass-hover">
-                        <div className="flex items-start justify-between mb-4">
-                            <div>
-                                <h3 className="font-semibold text-lg">{op.name}</h3>
-                                <p className="text-zinc-500 text-sm">{op.teamSize} agents assigned</p>
+            {operations.length === 0 ? (
+                <div className="card text-center py-16">
+                    <p className="text-5xl mb-4">🎯</p>
+                    <p className="text-zinc-400">Belum ada operation aktif</p>
+                    <button onClick={() => setShowModal(true)} className="btn-primary mt-4">Buat Operation Pertama</button>
+                </div>
+            ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {operations.map((op) => {
+                        const statusStyles = getStatusStyles(op.status);
+                        const priorityStyles = getPriorityStyles(op.priority);
+                        const daysInfo = getDaysRemaining(op.deadline);
+                        const isExpanded = selectedOp === op.id;
+
+                        return (
+                            <div
+                                key={op.id}
+                                className={`card glass-hover cursor-pointer transition-all duration-300 ${isExpanded ? 'ring-1 ring-green-500/50 md:col-span-2' : ''}`}
+                                onClick={() => setSelectedOp(isExpanded ? null : op.id)}
+                            >
+                                <div className="flex items-start justify-between mb-4">
+                                    <div className="flex-1 min-w-0">
+                                        <h3 className="font-semibold text-lg truncate">{op.name}</h3>
+                                        <p className="text-zinc-500 text-sm">{op.teamSize} agents assigned</p>
+                                    </div>
+                                    <div className="flex items-center gap-2 shrink-0">
+                                        <span className={`text-xs px-2 py-1 rounded ${priorityStyles.bg} ${priorityStyles.text}`}>
+                                            {op.priority?.toUpperCase() || "MEDIUM"}
+                                        </span>
+                                        <span className={`text-xs px-2 py-1 rounded ${statusStyles.bg} ${statusStyles.text}`}>
+                                            {statusStyles.icon} {op.status.toUpperCase()}
+                                        </span>
+                                    </div>
+                                </div>
+
+                                <div className="mb-3">
+                                    <div className="flex justify-between text-sm mb-1">
+                                        <span className="text-zinc-400">Progress</span>
+                                        <span className="text-green-400">{op.progress}%</span>
+                                    </div>
+                                    <div className="w-full h-2 bg-zinc-800 rounded-full overflow-hidden">
+                                        <div className="h-full bg-gradient-to-r from-green-500 to-emerald-400 rounded-full transition-all" style={{ width: `${op.progress}%` }} />
+                                    </div>
+                                </div>
+
+                                <div className="flex items-center justify-between text-sm">
+                                    <span className="text-zinc-500">
+                                        📅 {new Date(op.deadline).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
+                                    </span>
+                                    <span className={daysInfo.color}>{daysInfo.text}</span>
+                                </div>
+
+                                {/* Expanded Content */}
+                                {isExpanded && (
+                                    <div className="mt-4 pt-4 border-t border-zinc-800 space-y-4" onClick={(e) => e.stopPropagation()}>
+                                        {/* Description */}
+                                        <div>
+                                            <h4 className="text-xs text-zinc-500 uppercase tracking-wider mb-2">📝 Description</h4>
+                                            <div className="bg-zinc-900/50 rounded-lg p-4 text-zinc-300">
+                                                {op.description ? (
+                                                    <p className="whitespace-pre-wrap">{op.description}</p>
+                                                ) : (
+                                                    <p className="text-zinc-500 italic">Tidak ada deskripsi</p>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* Stats Grid */}
+                                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                                            <div className="bg-zinc-900/50 rounded-lg p-3 text-center">
+                                                <p className="text-2xl font-bold text-green-400">{op.progress}%</p>
+                                                <p className="text-xs text-zinc-500">Progress</p>
+                                            </div>
+                                            <div className="bg-zinc-900/50 rounded-lg p-3 text-center">
+                                                <p className="text-2xl font-bold text-blue-400">{op.teamSize}</p>
+                                                <p className="text-xs text-zinc-500">Team Size</p>
+                                            </div>
+                                            <div className="bg-zinc-900/50 rounded-lg p-3 text-center">
+                                                <p className={`text-2xl font-bold ${statusStyles.text}`}>{statusStyles.icon}</p>
+                                                <p className="text-xs text-zinc-500">{op.status}</p>
+                                            </div>
+                                            <div className="bg-zinc-900/50 rounded-lg p-3 text-center">
+                                                <p className={`text-2xl font-bold ${priorityStyles.text}`}>{op.priority?.[0]?.toUpperCase() || "M"}</p>
+                                                <p className="text-xs text-zinc-500">Priority</p>
+                                            </div>
+                                        </div>
+
+                                        {/* Metadata */}
+                                        <div className="flex items-center gap-6 text-xs text-zinc-500">
+                                            <div>
+                                                <span className="text-zinc-600">Created:</span>{" "}
+                                                <span className="text-zinc-300">{op.createdAt ? new Date(op.createdAt).toLocaleString("id-ID") : "-"}</span>
+                                            </div>
+                                            <div>
+                                                <span className="text-zinc-600">ID:</span>{" "}
+                                                <span className="text-zinc-400 font-mono">{op.id.slice(0, 8)}...</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
-                            <span className={`text-xs px-2 py-1 rounded ${op.status === "active" ? "bg-green-500/20 text-green-400" : op.status === "planning" ? "bg-yellow-500/20 text-yellow-400" : "bg-blue-500/20 text-blue-400"}`}>
-                                {op.status.toUpperCase()}
-                            </span>
-                        </div>
-                        <div className="mb-2">
-                            <div className="flex justify-between text-sm mb-1">
-                                <span className="text-zinc-400">Progress</span>
-                                <span className="text-green-400">{op.progress}%</span>
-                            </div>
-                            <div className="w-full h-2 bg-zinc-800 rounded-full overflow-hidden">
-                                <div className="h-full bg-gradient-to-r from-green-500 to-emerald-400 rounded-full transition-all" style={{ width: `${op.progress}%` }} />
-                            </div>
-                        </div>
-                        <p className="text-sm text-zinc-500">
-                            Deadline: {new Date(op.deadline).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" })}
-                        </p>
-                    </div>
-                ))}
-            </div>
+                        );
+                    })}
+                </div>
+            )}
 
             <Modal isOpen={showModal} onClose={() => setShowModal(false)} title="New Operation">
                 <form onSubmit={handleSubmit} className="space-y-4">
@@ -713,15 +834,29 @@ function OperationsSection({ showToast }: { showToast: (msg: string, type: "succ
                         <input type="text" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} className="w-full px-4 py-3 rounded-lg bg-zinc-900/50 border border-zinc-800 focus:border-green-500 focus:outline-none" placeholder="Operation Phoenix" required />
                     </div>
                     <div>
+                        <label className="block text-sm text-zinc-400 mb-2">Description</label>
+                        <textarea value={formData.description} onChange={(e) => setFormData({ ...formData, description: e.target.value })} className="w-full px-4 py-3 rounded-lg bg-zinc-900/50 border border-zinc-800 focus:border-green-500 focus:outline-none h-24 resize-none" placeholder="Deskripsi operation..." />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm text-zinc-400 mb-2">Priority</label>
+                            <select value={formData.priority} onChange={(e) => setFormData({ ...formData, priority: e.target.value })} className="w-full px-4 py-3 rounded-lg bg-zinc-900/50 border border-zinc-800 focus:border-green-500 focus:outline-none">
+                                <option value="low">🔵 Low</option>
+                                <option value="medium">🟡 Medium</option>
+                                <option value="high">🔴 High</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-sm text-zinc-400 mb-2">Team Size</label>
+                            <input type="number" min={1} value={formData.teamSize} onChange={(e) => setFormData({ ...formData, teamSize: parseInt(e.target.value) })} className="w-full px-4 py-3 rounded-lg bg-zinc-900/50 border border-zinc-800 focus:border-green-500 focus:outline-none" required />
+                        </div>
+                    </div>
+                    <div>
                         <label className="block text-sm text-zinc-400 mb-2">Deadline</label>
                         <input type="date" value={formData.deadline} onChange={(e) => setFormData({ ...formData, deadline: e.target.value })} className="w-full px-4 py-3 rounded-lg bg-zinc-900/50 border border-zinc-800 focus:border-green-500 focus:outline-none" required />
                     </div>
-                    <div>
-                        <label className="block text-sm text-zinc-400 mb-2">Team Size</label>
-                        <input type="number" min={1} value={formData.teamSize} onChange={(e) => setFormData({ ...formData, teamSize: parseInt(e.target.value) })} className="w-full px-4 py-3 rounded-lg bg-zinc-900/50 border border-zinc-800 focus:border-green-500 focus:outline-none" required />
-                    </div>
                     <button type="submit" disabled={submitting} className="w-full btn-primary disabled:opacity-50">
-                        {submitting ? "Membuat..." : "Create Operation"}
+                        {submitting ? "Membuat..." : "🎯 Create Operation"}
                     </button>
                 </form>
             </Modal>
@@ -734,6 +869,7 @@ function IntelSection({ showToast, agents }: { showToast: (msg: string, type: "s
     const [intel, setIntel] = useState<Intel[]>([]);
     const [loading, setLoading] = useState(true);
     const [showModal, setShowModal] = useState(false);
+    const [selectedIntel, setSelectedIntel] = useState<Intel | null>(null);
     const [formData, setFormData] = useState({ title: "", content: "", priority: "medium", sourceId: "" });
     const [submitting, setSubmitting] = useState(false);
 
@@ -779,32 +915,117 @@ function IntelSection({ showToast, agents }: { showToast: (msg: string, type: "s
         }
     }
 
+    const getPriorityStyles = (priority: string) => {
+        switch (priority) {
+            case "high":
+                return { dot: "bg-red-500 animate-pulse", badge: "bg-red-500/20 text-red-400", icon: "🔴" };
+            case "medium":
+                return { dot: "bg-yellow-500", badge: "bg-yellow-500/20 text-yellow-400", icon: "🟡" };
+            default:
+                return { dot: "bg-blue-500", badge: "bg-blue-500/20 text-blue-400", icon: "🔵" };
+        }
+    };
+
     if (loading) return <LoadingSkeleton />;
 
     return (
         <div className="space-y-6">
             <div className="flex items-center justify-between">
                 <div>
-                    <h1 className="text-2xl font-bold mb-2">Intel Feed</h1>
+                    <h1 className="text-2xl font-bold mb-2">📡 Intel Feed</h1>
                     <p className="text-zinc-500">Latest intelligence reports from the field ({intel.length} reports)</p>
                 </div>
                 <button onClick={() => setShowModal(true)} className="btn-primary">+ Submit Intel</button>
             </div>
 
-            <div className="space-y-3">
-                {intel.map((item) => (
-                    <div key={item.id} className="card glass-hover flex items-center gap-4">
-                        <div className={`w-3 h-3 rounded-full ${item.priority === "high" ? "bg-red-500 animate-pulse" : item.priority === "medium" ? "bg-yellow-500" : "bg-blue-500"}`} />
-                        <div className="flex-1">
-                            <h3 className="font-medium">{item.title}</h3>
-                            <p className="text-sm text-zinc-500">{item.source?.codename || "Unknown"} • {getRelativeTime(item.createdAt)}</p>
-                        </div>
-                        <span className={`text-xs px-2 py-1 rounded ${item.priority === "high" ? "bg-red-500/20 text-red-400" : item.priority === "medium" ? "bg-yellow-500/20 text-yellow-400" : "bg-blue-500/20 text-blue-400"}`}>
-                            {item.priority.toUpperCase()}
-                        </span>
-                    </div>
-                ))}
-            </div>
+            {intel.length === 0 ? (
+                <div className="card text-center py-16">
+                    <p className="text-5xl mb-4">📡</p>
+                    <p className="text-zinc-400">Belum ada intel report</p>
+                    <button onClick={() => setShowModal(true)} className="btn-primary mt-4">Submit Intel Pertama</button>
+                </div>
+            ) : (
+                <div className="space-y-3">
+                    {intel.map((item) => {
+                        const styles = getPriorityStyles(item.priority);
+                        const isExpanded = selectedIntel?.id === item.id;
+
+                        return (
+                            <div
+                                key={item.id}
+                                className={`card glass-hover cursor-pointer transition-all duration-300 ${isExpanded ? 'ring-1 ring-green-500/50' : ''}`}
+                                onClick={() => setSelectedIntel(isExpanded ? null : item)}
+                            >
+                                <div className="flex items-center gap-4">
+                                    <div className={`w-3 h-3 rounded-full ${styles.dot}`} />
+                                    <div className="flex-1 min-w-0">
+                                        <h3 className="font-medium truncate">{item.title}</h3>
+                                        <p className="text-sm text-zinc-500">
+                                            {styles.icon} {item.source?.codename || "Unknown"} • {getRelativeTime(item.createdAt)}
+                                        </p>
+                                    </div>
+                                    <span className={`text-xs px-2 py-1 rounded shrink-0 ${styles.badge}`}>
+                                        {item.priority.toUpperCase()}
+                                    </span>
+                                    <span className={`text-zinc-400 transition-transform ${isExpanded ? 'rotate-180' : ''}`}>
+                                        ▼
+                                    </span>
+                                </div>
+
+                                {/* Expanded Content */}
+                                {isExpanded && (
+                                    <div className="mt-4 pt-4 border-t border-zinc-800 space-y-4" onClick={(e) => e.stopPropagation()}>
+                                        {/* Content */}
+                                        <div>
+                                            <h4 className="text-xs text-zinc-500 uppercase tracking-wider mb-2">📝 Detail Report</h4>
+                                            <div className="bg-zinc-900/50 rounded-lg p-4 text-zinc-300">
+                                                {item.content ? (
+                                                    <p className="whitespace-pre-wrap">{item.content}</p>
+                                                ) : (
+                                                    <p className="text-zinc-500 italic">Tidak ada detail tambahan</p>
+                                                )}
+                                            </div>
+                                        </div>
+
+                                        {/* Attachments */}
+                                        {item.attachments && item.attachments.length > 0 && (
+                                            <div>
+                                                <h4 className="text-xs text-zinc-500 uppercase tracking-wider mb-2">📎 Attachments</h4>
+                                                <div className="flex flex-wrap gap-2">
+                                                    {item.attachments.map((url, idx) => (
+                                                        <a
+                                                            key={idx}
+                                                            href={url}
+                                                            target="_blank"
+                                                            rel="noopener noreferrer"
+                                                            className="px-3 py-1 bg-zinc-800 rounded-lg text-sm text-green-400 hover:bg-zinc-700 transition-colors"
+                                                        >
+                                                            File {idx + 1} ↗
+                                                        </a>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Metadata */}
+                                        <div className="flex items-center gap-6 text-xs text-zinc-500">
+                                            <div>
+                                                <span className="text-zinc-600">Source:</span> <span className="text-zinc-300">{item.source?.codename || "Unknown"}</span>
+                                            </div>
+                                            <div>
+                                                <span className="text-zinc-600">Date:</span> <span className="text-zinc-300">{new Date(item.createdAt).toLocaleString("id-ID")}</span>
+                                            </div>
+                                            <div>
+                                                <span className="text-zinc-600">ID:</span> <span className="text-zinc-400 font-mono">{item.id.slice(0, 8)}...</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
+                </div>
+            )}
 
             <Modal isOpen={showModal} onClose={() => setShowModal(false)} title="Submit Intel Report">
                 <form onSubmit={handleSubmit} className="space-y-4">
@@ -814,14 +1035,14 @@ function IntelSection({ showToast, agents }: { showToast: (msg: string, type: "s
                     </div>
                     <div>
                         <label className="block text-sm text-zinc-400 mb-2">Content</label>
-                        <textarea value={formData.content} onChange={(e) => setFormData({ ...formData, content: e.target.value })} className="w-full px-4 py-3 rounded-lg bg-zinc-900/50 border border-zinc-800 focus:border-green-500 focus:outline-none h-24 resize-none" placeholder="Detail intel..." />
+                        <textarea value={formData.content} onChange={(e) => setFormData({ ...formData, content: e.target.value })} className="w-full px-4 py-3 rounded-lg bg-zinc-900/50 border border-zinc-800 focus:border-green-500 focus:outline-none h-32 resize-none" placeholder="Detail intel report..." />
                     </div>
                     <div>
                         <label className="block text-sm text-zinc-400 mb-2">Priority</label>
                         <select value={formData.priority} onChange={(e) => setFormData({ ...formData, priority: e.target.value })} className="w-full px-4 py-3 rounded-lg bg-zinc-900/50 border border-zinc-800 focus:border-green-500 focus:outline-none">
-                            <option value="low">Low</option>
-                            <option value="medium">Medium</option>
-                            <option value="high">High</option>
+                            <option value="low">🔵 Low - Informasi umum</option>
+                            <option value="medium">🟡 Medium - Perlu perhatian</option>
+                            <option value="high">🔴 High - Urgent / Kritis</option>
                         </select>
                     </div>
                     <div>
@@ -834,7 +1055,7 @@ function IntelSection({ showToast, agents }: { showToast: (msg: string, type: "s
                         </select>
                     </div>
                     <button type="submit" disabled={submitting} className="w-full btn-primary disabled:opacity-50">
-                        {submitting ? "Mengirim..." : "Submit Intel"}
+                        {submitting ? "Mengirim..." : "📡 Submit Intel"}
                     </button>
                 </form>
             </Modal>
@@ -2163,11 +2384,7 @@ export default function Dashboard() {
             case "security":
                 return <SecuritySection showToast={showToast} />;
             case "gallery":
-                return (
-                    <Suspense fallback={<div className="flex items-center justify-center py-20"><span className="text-zinc-500">Memuat gallery...</span></div>}>
-                        <AlbumsSection showToast={showToast} />
-                    </Suspense>
-                );
+                return <AlbumsSection showToast={showToast} />
             case "settings":
                 return <SettingsSection />;
             default:

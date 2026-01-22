@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { parseUserAgent } from '@/lib/user-agent';
 import { getCurrentUser } from '@/lib/auth';
+import { getClientIP } from '@/lib/ip';
 
 // POST - Log visitor
 export async function POST(request: NextRequest) {
@@ -9,10 +10,8 @@ export async function POST(request: NextRequest) {
         const body = await request.json();
         const { page, referer } = body;
 
-        // Get client info
-        const ip = request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
-            request.headers.get('x-real-ip') ||
-            'unknown';
+        // Get client info (supports Cloudflare)
+        const ip = getClientIP(request);
         const userAgent = request.headers.get('user-agent') || 'Unknown';
 
         // Parse user agent

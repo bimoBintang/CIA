@@ -5,6 +5,7 @@ import { checkRateLimit, LOGIN_RATE_LIMIT, resetRateLimit } from '@/lib/rate-lim
 import { isValidEmail } from '@/lib/validation';
 import { trackFailedLogin, securityCheck } from '@/lib/security';
 import { sendOTPEmail, generateOTP, getOTPExpiry } from '@/lib/email';
+import { getClientIP } from '@/lib/ip';
 
 // Helper to parse user agent
 function parseUserAgent(userAgent: string) {
@@ -67,10 +68,8 @@ async function logLoginActivity(data: {
 // POST - Login
 export async function POST(request: NextRequest) {
     try {
-        // Get client IP for rate limiting
-        const ip = request.headers.get('x-forwarded-for')?.split(',')[0] ||
-            request.headers.get('x-real-ip') ||
-            'unknown';
+        // Get client IP for rate limiting (supports Cloudflare)
+        const ip = getClientIP(request);
         const userAgent = request.headers.get('user-agent') || 'unknown';
 
         const body = await request.json();

@@ -53,14 +53,30 @@ model Agent {
 }
 
 model Operation {
-  id        String   @id @default(cuid())
-  name      String
-  status    String   @default("planning")
-  progress  Int      @default(0)
-  deadline  DateTime
-  teamSize  Int      @default(1)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String          @id @default(cuid())
+  name        String
+  description String?
+  status      String          @default("planning")
+  priority    String          @default("medium")
+  progress    Int             @default(0)
+  deadline    DateTime
+  teamSize    Int             @default(1)
+  attachments String[] // file URLs for operation documents
+  plans       OperationPlan[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+}
+
+model OperationPlan {
+  id          String    @id @default(cuid())
+  operationId String
+  operation   Operation @relation(fields: [operationId], references: [id], onDelete: Cascade)
+  title       String
+  content     String?
+  status      String    @default("pending") // pending, in_progress, completed
+  attachments String[] // file URLs for plan documents
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 }
 
 model Intel {
