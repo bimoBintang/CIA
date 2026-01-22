@@ -15,16 +15,22 @@ enum Role {
 }
 
 model User {
-  id              String          @id @default(cuid())
-  email           String          @unique
-  password        String
-  name            String
-  role            Role            @default(AGENT)
-  agentId         String?         @unique
-  agent           Agent?          @relation(fields: [agentId], references: [id])
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
-  loginActivities LoginActivity[]
+  id               String          @id @default(cuid())
+  email            String          @unique
+  password         String
+  name             String
+  role             Role            @default(AGENT)
+  agentId          String?         @unique
+  agent            Agent?          @relation(fields: [agentId], references: [id])
+  sessionToken     String?         @unique // Current active session token
+  sessionCreatedAt DateTime? // When the current session was created
+  sessionDevice    String? // Device info for the active session
+  otpCode          String? // OTP code for email verification
+  otpExpiry        DateTime? // OTP expiration time
+  otpAttempts      Int             @default(0) // Failed OTP attempts
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  loginActivities  LoginActivity[]
 }
 
 model Agent {
@@ -187,5 +193,40 @@ model ChannelMessage {
 
   @@index([channelId])
   @@index([senderId])
+  @@index([createdAt])
+}
+
+// ============ Albums & Photos ============
+
+model Album {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  coverUrl    String? // Cover image URL
+  isPublic    Boolean  @default(false)
+  createdBy   String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  photos Photo[]
+
+  @@index([createdBy])
+  @@index([isPublic])
+}
+
+model Photo {
+  id        String   @id @default(cuid())
+  albumId   String
+  url       String
+  filename  String
+  caption   String?
+  size      Int // File size in bytes
+  width     Int?
+  height    Int?
+  createdAt DateTime @default(now())
+
+  album Album @relation(fields: [albumId], references: [id], onDelete: Cascade)
+
+  @@index([albumId])
   @@index([createdAt])
 }

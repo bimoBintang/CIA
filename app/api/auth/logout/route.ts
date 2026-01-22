@@ -1,18 +1,23 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { getCurrentUser, removeAuthCookie } from '@/lib/auth';
+import { getCurrentUserRaw, removeAuthCookie, clearUserSession } from '@/lib/auth';
 
 // POST - Logout
 export async function POST() {
     try {
-        const currentUser = await getCurrentUser();
+        const currentUser = await getCurrentUserRaw();
 
-        // Set agent status to offline if linked
-        if (currentUser?.agentId) {
-            await prisma.agent.update({
-                where: { id: currentUser.agentId },
-                data: { status: 'offline' },
-            });
+        if (currentUser) {
+            // Clear session token from database
+            await clearUserSession(currentUser.userId);
+
+            // Set agent status to offline if linked
+            if (currentUser.agentId) {
+                await prisma.agent.update({
+                    where: { id: currentUser.agentId },
+                    data: { status: 'offline' },
+                });
+            }
         }
 
         // Remove auth cookie

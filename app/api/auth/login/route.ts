@@ -1,20 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
-import { verifyPassword, createToken, setAuthCookie } from '@/lib/auth';
+import { verifyPassword } from '@/lib/auth';
 import { checkRateLimit, LOGIN_RATE_LIMIT, resetRateLimit } from '@/lib/rate-limit';
 import { isValidEmail } from '@/lib/validation';
 import { trackFailedLogin, securityCheck } from '@/lib/security';
+import { sendOTPEmail, generateOTP, getOTPExpiry } from '@/lib/email';
 
 // Helper to parse user agent
 function parseUserAgent(userAgent: string) {
     const ua = userAgent.toLowerCase();
-    
+
     // Device
     let device = 'desktop';
     if (/mobile|android|iphone|ipad|ipod/.test(ua)) {
         device = /ipad|tablet/.test(ua) ? 'tablet' : 'mobile';
     }
-    
+
     // Browser
     let browser = 'Unknown';
     if (ua.includes('firefox')) browser = 'Firefox';
@@ -22,7 +23,7 @@ function parseUserAgent(userAgent: string) {
     else if (ua.includes('chrome')) browser = 'Chrome';
     else if (ua.includes('safari')) browser = 'Safari';
     else if (ua.includes('opera')) browser = 'Opera';
-    
+
     // OS
     let os = 'Unknown';
     if (ua.includes('windows')) os = 'Windows';
@@ -30,7 +31,7 @@ function parseUserAgent(userAgent: string) {
     else if (ua.includes('linux')) os = 'Linux';
     else if (ua.includes('android')) os = 'Android';
     else if (ua.includes('iphone') || ua.includes('ipad')) os = 'iOS';
-    
+
     return { device, browser, os };
 }
 
@@ -181,55 +182,56 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Reset rate limit on successful login
+        // Reset rate limit on successful password verification
         resetRateLimit(rateLimitKey);
 
-        // Create JWT token
-        const token = await createToken({
-            userId: user.id,
-            email: user.email,
-            role: user.role,
-            agentId: user.agent?.id,
-            codename: user.agent?.codename,
+        // Generate OTP for email verification
+        const otp = generateOTP();
+        const otpExpiry = getOTPExpiry();
+
+        // Store OTP in database
+        await prisma.user.update({
+            where: { id: user.id },
+            data: {
+                otpCode: otp,
+                otpExpiry,
+                otpAttempts: 0, // Reset attempts
+            },
         });
 
-        // Set auth cookie
-        await setAuthCookie(token);
+        // Send OTP via email
+        const emailSent = await sendOTPEmail({
+            email: user.email,
+            name: user.name,
+            otp,
+        });
 
-        // Update agent status to online if linked
-        if (user.agentId) {
-            await prisma.agent.update({
-                where: { id: user.agentId },
-                data: { status: 'online' },
-            });
+        if (!emailSent) {
+            console.error('[LOGIN] Failed to send OTP email to', user.email);
+            // Continue anyway - OTP is logged in console for development
         }
 
-        // Log successful login
+        // Log OTP request activity
         await logLoginActivity({
             userId: user.id,
             email,
             ip,
             userAgent,
             status: 'success',
+            reason: 'OTP sent',
         });
 
         const response = NextResponse.json({
             success: true,
+            requiresOTP: true, // Indicates OTP verification needed
+            message: 'Verification code has been sent to your email',
             data: {
-                user: {
-                    id: user.id,
-                    email: user.email,
-                    name: user.name,
-                    role: user.role,
-                    agent: user.agent,
-                },
-                token,
+                email: user.email,
+                maskedEmail: maskEmail(user.email),
             },
         });
 
-        // Add rate limit headers
         response.headers.set('X-RateLimit-Remaining', rateLimit.remaining.toString());
-
         return response;
     } catch (error) {
         console.error('Error during login:', error);
@@ -239,4 +241,14 @@ export async function POST(request: NextRequest) {
         );
     }
 }
+
+// Helper to mask email for display
+function maskEmail(email: string): string {
+    const [local, domain] = email.split('@');
+    if (local.length <= 2) {
+        return `${local[0]}***@${domain}`;
+    }
+    return `${local[0]}${local[1]}${'*'.repeat(Math.min(local.length - 2, 5))}@${domain}`;
+}
+
 

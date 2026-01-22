@@ -1,10 +1,17 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, Suspense } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import dynamic from "next/dynamic";
 import { fetchWithCache, invalidateCache } from "@/lib/cache";
 import { ROLE_PERMISSIONS, ROLE_COLORS, ROLE_LABELS, type Role } from "@/lib/roles";
+
+// Lazy load AlbumsSection with loading fallback
+const AlbumsSection = dynamic(() => import("@/components/dashboard/AlbumsSection"), {
+    loading: () => <div className="flex items-center justify-center py-20"><span className="text-zinc-500">Memuat gallery...</span></div>,
+    ssr: false,
+});
 
 // Types
 interface User {
@@ -146,6 +153,7 @@ function Sidebar({ activeTab, setActiveTab, user, onLogout }: {
         { id: "intel", label: "Intel Feed", icon: "📡", permission: "canViewIntel" as const },
         { id: "messages", label: "Messages", icon: "💬", permission: "canViewMessages" as const },
         { id: "monitoring", label: "Monitoring", icon: "👁️", permission: "canManageUsers" as const },
+        { id: "gallery", label: "Gallery", icon: "📸", permission: "canViewOperations" as const },
         { id: "security", label: "Security", icon: "🛡️", permission: "canManageUsers" as const },
         { id: "settings", label: "Settings", icon: "⚙️", permission: "canAccessSettings" as const },
     ];
@@ -2154,6 +2162,12 @@ export default function Dashboard() {
                 return <MonitoringSection />;
             case "security":
                 return <SecuritySection showToast={showToast} />;
+            case "gallery":
+                return (
+                    <Suspense fallback={<div className="flex items-center justify-center py-20"><span className="text-zinc-500">Memuat gallery...</span></div>}>
+                        <AlbumsSection showToast={showToast} />
+                    </Suspense>
+                );
             case "settings":
                 return <SettingsSection />;
             default:
