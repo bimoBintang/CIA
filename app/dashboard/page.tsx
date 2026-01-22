@@ -414,7 +414,7 @@ function OverviewSection({ onNavigate }: { onNavigate: (tab: string) => void }) 
             { icon: "🕵️", label: "Total Agents", value: stats.agents.total, change: `${stats.agents.online} online`, changeType: "up" as const },
             { icon: "🎯", label: "Active Ops", value: stats.operations.active, change: `${stats.operations.planning} planning`, changeType: "neutral" as const },
             { icon: "📡", label: "Intel Reports", value: stats.intel.total, change: `${stats.intel.high} high priority`, changeType: "up" as const },
-            { icon: "💬", label: "Messages", value: stats.messages.total, change: `${stats.messages.unread} unread`, changeType: "neutral" as const },
+            { icon: "📰", label: "Berita", value: stats.news?.total || 0, change: `${stats.news?.published || 0} published`, changeType: "neutral" as const },
         ]
         : [];
 
