@@ -1,7 +1,17 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
-import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, BarChart, Bar, XAxis, YAxis } from "recharts";
+import React, { useState, useEffect, useCallback, lazy, Suspense } from "react";
+
+// Lazy load chart components - only load when needed
+const LazyPieChart = lazy(() => import("recharts").then(mod => ({ default: mod.PieChart })));
+const LazyPie = lazy(() => import("recharts").then(mod => ({ default: mod.Pie })));
+const LazyCell = lazy(() => import("recharts").then(mod => ({ default: mod.Cell })));
+const LazyResponsiveContainer = lazy(() => import("recharts").then(mod => ({ default: mod.ResponsiveContainer })));
+const LazyTooltip = lazy(() => import("recharts").then(mod => ({ default: mod.Tooltip })));
+const LazyBarChart = lazy(() => import("recharts").then(mod => ({ default: mod.BarChart })));
+const LazyBar = lazy(() => import("recharts").then(mod => ({ default: mod.Bar })));
+const LazyXAxis = lazy(() => import("recharts").then(mod => ({ default: mod.XAxis })));
+const LazyYAxis = lazy(() => import("recharts").then(mod => ({ default: mod.YAxis })));
 
 interface VisitorLog {
     id: string;
@@ -45,6 +55,68 @@ const DEVICE_COLORS = {
 
 const COUNTRY_COLORS = ["#10b981", "#3b82f6", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#06b6d4", "#84cc16"];
 
+// Simple chart fallback
+function ChartSkeleton() {
+    return (
+        <div className="h-48 flex items-center justify-center">
+            <div className="animate-pulse bg-zinc-800 rounded-lg w-full h-full" />
+        </div>
+    );
+}
+
+// Separate chart component for code splitting
+function DeviceChart({ deviceData }: { deviceData: { name: string; value: number; color: string }[] }) {
+    return (
+        <Suspense fallback={<ChartSkeleton />}>
+            <LazyResponsiveContainer width="100%" height="100%">
+                <LazyPieChart>
+                    <LazyPie
+                        data={deviceData}
+                        cx="50%"
+                        cy="50%"
+                        innerRadius={40}
+                        outerRadius={70}
+                        paddingAngle={5}
+                        dataKey="value"
+                        label={({ name, percent }: { name?: string; percent?: number }) => `${name || ''} ${((percent || 0) * 100).toFixed(0)}%`}
+                        labelLine={false}
+                    >
+                        {deviceData.map((entry, index) => (
+                            <LazyCell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                    </LazyPie>
+                    <LazyTooltip
+                        contentStyle={{ backgroundColor: "#18181b", border: "1px solid #27272a", borderRadius: "8px" }}
+                        itemStyle={{ color: "#fff" }}
+                    />
+                </LazyPieChart>
+            </LazyResponsiveContainer>
+        </Suspense>
+    );
+}
+
+function CountryChart({ countryData }: { countryData: { country: string; count: number }[] }) {
+    return (
+        <Suspense fallback={<ChartSkeleton />}>
+            <LazyResponsiveContainer width="100%" height="100%">
+                <LazyBarChart data={countryData} layout="vertical" margin={{ left: 60 }}>
+                    <LazyXAxis type="number" stroke="#52525b" fontSize={12} />
+                    <LazyYAxis type="category" dataKey="country" stroke="#52525b" fontSize={12} width={55} />
+                    <LazyTooltip
+                        contentStyle={{ backgroundColor: "#18181b", border: "1px solid #27272a", borderRadius: "8px" }}
+                        itemStyle={{ color: "#fff" }}
+                    />
+                    <LazyBar dataKey="count" radius={[0, 4, 4, 0]}>
+                        {countryData.map((_, index) => (
+                            <LazyCell key={`cell-${index}`} fill={COUNTRY_COLORS[index % COUNTRY_COLORS.length]} />
+                        ))}
+                    </LazyBar>
+                </LazyBarChart>
+            </LazyResponsiveContainer>
+        </Suspense>
+    );
+}
+
 export default function DeviceTrackingSection() {
     const [logs, setLogs] = useState<VisitorLog[]>([]);
     const [stats, setStats] = useState<Stats | null>(null);
@@ -71,7 +143,6 @@ export default function DeviceTrackingSection() {
 
     useEffect(() => {
         fetchData();
-        // Auto refresh every 30 seconds
         const interval = setInterval(fetchData, 30000);
         return () => clearInterval(interval);
     }, [fetchData]);
@@ -129,57 +200,19 @@ export default function DeviceTrackingSection() {
                 </div>
             </div>
 
-            {/* Charts Row */}
+            {/* Charts Row - Lazy loaded */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* Device Breakdown Pie Chart */}
                 <div className="card">
                     <h3 className="font-semibold mb-4">📱 Device Breakdown</h3>
                     <div className="h-48">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <PieChart>
-                                <Pie
-                                    data={deviceData}
-                                    cx="50%"
-                                    cy="50%"
-                                    innerRadius={40}
-                                    outerRadius={70}
-                                    paddingAngle={5}
-                                    dataKey="value"
-                                    label={({ name, percent }) => `${name} ${((percent || 0) * 100).toFixed(0)}%`}
-                                    labelLine={false}
-                                >
-                                    {deviceData.map((entry, index) => (
-                                        <Cell key={`cell-${index}`} fill={entry.color} />
-                                    ))}
-                                </Pie>
-                                <Tooltip
-                                    contentStyle={{ backgroundColor: "#18181b", border: "1px solid #27272a", borderRadius: "8px" }}
-                                    itemStyle={{ color: "#fff" }}
-                                />
-                            </PieChart>
-                        </ResponsiveContainer>
+                        <DeviceChart deviceData={deviceData} />
                     </div>
                 </div>
 
-                {/* Top Countries Bar Chart */}
                 <div className="card">
                     <h3 className="font-semibold mb-4">🌍 Top Countries</h3>
                     <div className="h-48">
-                        <ResponsiveContainer width="100%" height="100%">
-                            <BarChart data={countryData} layout="vertical" margin={{ left: 60 }}>
-                                <XAxis type="number" stroke="#52525b" fontSize={12} />
-                                <YAxis type="category" dataKey="country" stroke="#52525b" fontSize={12} width={55} />
-                                <Tooltip
-                                    contentStyle={{ backgroundColor: "#18181b", border: "1px solid #27272a", borderRadius: "8px" }}
-                                    itemStyle={{ color: "#fff" }}
-                                />
-                                <Bar dataKey="count" radius={[0, 4, 4, 0]}>
-                                    {countryData.map((_, index) => (
-                                        <Cell key={`cell-${index}`} fill={COUNTRY_COLORS[index % COUNTRY_COLORS.length]} />
-                                    ))}
-                                </Bar>
-                            </BarChart>
-                        </ResponsiveContainer>
+                        <CountryChart countryData={countryData} />
                     </div>
                 </div>
             </div>
@@ -253,7 +286,6 @@ export default function DeviceTrackingSection() {
                     </table>
                 </div>
 
-                {/* Pagination */}
                 {pagination && pagination.totalPages > 1 && (
                     <div className="flex items-center justify-between mt-4 pt-4 border-t border-zinc-800">
                         <span className="text-sm text-zinc-500">
