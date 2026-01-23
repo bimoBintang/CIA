@@ -1,10 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { hashPassword } from '@/lib/auth';
+import { applyThrottle } from '@/lib/throttle-helper';
 import { isValidEmail, validatePassword, sanitizeString, isValidRole } from '@/lib/validation';
 
 // GET - List all users
-export async function GET() {
+export async function GET(request: NextRequest) {
+    // Throttle check - read config
+    const throttle = await applyThrottle(request, 'read');
+    if (!throttle.passed) return throttle.response!;
+
     try {
         const users = await prisma.user.findMany({
             include: {
@@ -34,6 +39,10 @@ export async function GET() {
 
 // POST - Create new user
 export async function POST(request: NextRequest) {
+    // Throttle check - write config
+    const throttle = await applyThrottle(request, 'write');
+    if (!throttle.passed) return throttle.response!;
+
     try {
         const body = await request.json();
         const { email, password, name, role, agentId } = body;
@@ -114,6 +123,10 @@ export async function POST(request: NextRequest) {
 
 // PATCH - Update user role
 export async function PATCH(request: NextRequest) {
+    // Throttle check - write config
+    const throttle = await applyThrottle(request, 'write');
+    if (!throttle.passed) return throttle.response!;
+
     try {
         const body = await request.json();
         const { id, role, agentId } = body;

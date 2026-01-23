@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { createToken, setAuthCookie } from '@/lib/auth';
+import { applyThrottle } from '@/lib/throttle-helper';
 import crypto from 'crypto';
 
 // POST - Verify OTP and complete login
 export async function POST(request: NextRequest) {
     try {
+        // Throttle check with progressive penalty for OTP
+        const throttle = await applyThrottle(request, 'otp');
+        if (!throttle.passed) return throttle.response!;
+
         const body = await request.json();
         const { email, otp } = body;
 

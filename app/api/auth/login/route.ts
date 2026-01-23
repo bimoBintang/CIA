@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { verifyPassword } from '@/lib/auth';
-import { checkRateLimit, LOGIN_RATE_LIMIT, resetRateLimit } from '@/lib/rate-limit';
+import { applyThrottle, addRateLimitHeaders } from '@/lib/throttle-helper';
 import { isValidEmail } from '@/lib/validation';
 import { trackFailedLogin, securityCheck } from '@/lib/security';
 import { sendOTPEmail, generateOTP, getOTPExpiry } from '@/lib/email';
@@ -90,34 +90,17 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Rate limit by IP + email to prevent brute force
-        const rateLimitKey = `login:${ip}:${email}`;
-        const rateLimit = checkRateLimit(rateLimitKey, LOGIN_RATE_LIMIT);
-
-        if (!rateLimit.allowed) {
-            const retryAfter = Math.ceil(rateLimit.resetIn / 1000);
+        // Throttle check with progressive penalty for login
+        const throttle = await applyThrottle(request, 'login');
+        if (!throttle.passed) {
             await logLoginActivity({
                 email,
                 ip,
                 userAgent,
                 status: 'blocked',
-                reason: 'Rate limited',
+                reason: `Rate limited (attempt #${throttle.result.penaltyCount || 1})`,
             });
-            return NextResponse.json(
-                {
-                    success: false,
-                    error: `Too many login attempts. Try again in ${retryAfter} seconds.`,
-                    retryAfter,
-                },
-                {
-                    status: 429,
-                    headers: {
-                        'Retry-After': retryAfter.toString(),
-                        'X-RateLimit-Remaining': '0',
-                        'X-RateLimit-Reset': new Date(Date.now() + rateLimit.resetIn).toISOString(),
-                    },
-                }
-            );
+            return throttle.response!;
         }
 
         // Find user by email
@@ -181,8 +164,7 @@ export async function POST(request: NextRequest) {
             );
         }
 
-        // Reset rate limit on successful password verification
-        resetRateLimit(rateLimitKey);
+        // Password verified - success will be tracked by throttle system
 
         // Generate OTP for email verification
         const otp = generateOTP();
@@ -230,8 +212,8 @@ export async function POST(request: NextRequest) {
             },
         });
 
-        response.headers.set('X-RateLimit-Remaining', rateLimit.remaining.toString());
-        return response;
+        // Add rate limit headers to response
+        return addRateLimitHeaders(response, throttle.result);
     } catch (error) {
         console.error('Error during login:', error);
         return NextResponse.json(

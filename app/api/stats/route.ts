@@ -1,8 +1,13 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { applyThrottle } from '@/lib/throttle-helper';
 
 // GET /api/stats - Get dashboard statistics
-export async function GET() {
+export async function GET(request: NextRequest) {
+    // Throttle check - read config
+    const throttle = await applyThrottle(request, 'read');
+    if (!throttle.passed) return throttle.response!;
+
     try {
         const [
             agentCount,

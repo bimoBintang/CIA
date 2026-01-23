@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { getCurrentUser } from '@/lib/auth';
+import { applyThrottle } from '@/lib/throttle-helper';
 import { put } from '@vercel/blob';
 import crypto from 'crypto';
 
 // GET - List news (public: published only, admin: all)
 export async function GET(request: NextRequest) {
     try {
+        // Throttle check - read config (more lenient)
+        const throttle = await applyThrottle(request, 'read');
+        if (!throttle.passed) return throttle.response!;
+
         const { searchParams } = new URL(request.url);
         const all = searchParams.get('all') === 'true';
         const category = searchParams.get('category');
@@ -52,6 +57,10 @@ export async function GET(request: NextRequest) {
 // POST - Create news article
 export async function POST(request: NextRequest) {
     try {
+        // Throttle check - write config (stricter)
+        const throttle = await applyThrottle(request, 'write');
+        if (!throttle.passed) return throttle.response!;
+
         const currentUser = await getCurrentUser();
 
         if (!currentUser || !['ADMIN', 'SENIOR_AGENT'].includes(currentUser.role)) {

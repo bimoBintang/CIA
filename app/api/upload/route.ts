@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth';
+import { applyThrottle } from '@/lib/throttle-helper';
 import { writeFile, mkdir } from 'fs/promises';
 import { existsSync } from 'fs';
 import path from 'path';
@@ -37,6 +38,10 @@ function sanitizeFilename(filename: string): string {
 }
 
 export async function POST(request: NextRequest) {
+    // Throttle check - upload config (strict: 10 req/hour)
+    const throttle = await applyThrottle(request, 'upload');
+    if (!throttle.passed) return throttle.response!;
+
     try {
         const currentUser = await getCurrentUser();
 

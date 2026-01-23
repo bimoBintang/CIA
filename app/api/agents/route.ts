@@ -1,8 +1,13 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
+import { applyThrottle } from '@/lib/throttle-helper';
 
 // GET /api/agents - List all agents
-export async function GET() {
+export async function GET(request: NextRequest) {
+    // Throttle check - read config
+    const throttle = await applyThrottle(request, 'read');
+    if (!throttle.passed) return throttle.response!;
+
     try {
         const agents = await prisma.agent.findMany({
             orderBy: { createdAt: 'desc' },
@@ -22,7 +27,11 @@ export async function GET() {
 }
 
 // POST /api/agents - Create new agent
-export async function POST(request: Request) {
+export async function POST(request: NextRequest) {
+    // Throttle check - write config
+    const throttle = await applyThrottle(request, 'write');
+    if (!throttle.passed) return throttle.response!;
+
     try {
         const body = await request.json();
         const { codename, email, faculty, level = 'Junior' } = body;

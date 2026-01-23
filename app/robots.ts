@@ -1,7 +1,7 @@
 import { MetadataRoute } from 'next';
 
 function getSiteUrl(): string {
-    const url = process.env.NEXT_PUBLIC_SITE_URL || 'ciaa.web.id';
+    const url = process.env.NEXT_PUBLIC_SITE_URL!;
     if (url.startsWith('http://') || url.startsWith('https://')) {
         return url;
     }

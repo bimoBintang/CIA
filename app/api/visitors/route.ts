@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { parseUserAgent } from '@/lib/user-agent';
 import { getCurrentUser } from '@/lib/auth';
+import { applyThrottle } from '@/lib/throttle-helper';
 import { getClientIP } from '@/lib/ip';
 
 interface GeoData {
@@ -107,6 +108,10 @@ export function maskIP(ip: string): string {
 
 // POST - Log visitor
 export async function POST(request: NextRequest) {
+    // Throttle check - visitor config (lenient, no penalty)
+    const throttle = await applyThrottle(request, 'visitor');
+    if (!throttle.passed) return throttle.response!;
+
     try {
         const body = await request.json();
         const { page, referer, fingerprint } = body;

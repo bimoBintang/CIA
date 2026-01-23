@@ -17,6 +17,8 @@
     "@prisma/client": "^7.2.0",
     "@types/bcrypt": "^6.0.0",
     "@types/nodemailer": "^7.0.5",
+    "@upstash/ratelimit": "^2.0.8",
+    "@upstash/redis": "^1.36.1",
     "@vercel/blob": "^2.0.0",
     "bcrypt": "^6.0.0",
     "dotenv": "^17.2.3",
