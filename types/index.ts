@@ -5,6 +5,7 @@ export interface User {
     name: string;
     email: string;
     role: Role;
+    profileImage?: string | null;
     agent?: {
         id: string;
         codename: string;

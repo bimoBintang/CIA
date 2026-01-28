@@ -60,8 +60,12 @@ export function Sidebar({ activeTab, setActiveTab, user, onLogout }: {
             <div className="absolute bottom-0 left-0 right-0 p-4">
                 <div className="glass rounded-lg p-4 border border-green-500/20">
                     <div className="flex items-center gap-3 mb-3">
-                        <div className="w-10 h-10 rounded-full bg-linear-to-br from-green-500 to-emerald-600 flex items-center justify-center">
-                            <span className="text-black font-bold">{user?.name?.[0]?.toUpperCase() || "?"}</span>
+                        <div className="w-10 h-10 rounded-full bg-linear-to-br from-green-500 to-emerald-600 flex items-center justify-center overflow-hidden">
+                            {user?.profileImage ? (
+                                <img src={user.profileImage} alt="Profile" className="w-full h-full object-cover" />
+                            ) : (
+                                <span className="text-black font-bold">{user?.name?.[0]?.toUpperCase() || "?"}</span>
+                            )}
                         </div>
                         <div className="flex-1 min-w-0">
                             <p className="font-medium text-sm truncate">{user?.agent?.codename || user?.name || "Guest"}</p>

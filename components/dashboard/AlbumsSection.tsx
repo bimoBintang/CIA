@@ -46,11 +46,12 @@ function Modal({ isOpen, onClose, title, children }: {
 }
 
 // Photo Viewer Modal
-function PhotoViewer({ photo, onClose, onNext, onPrev }: {
+function PhotoViewer({ photo, onClose, onNext, onPrev, onDownload }: {
     photo: Photo;
     onClose: () => void;
     onNext?: () => void;
     onPrev?: () => void;
+    onDownload?: () => void;
 }) {
     return (
         <div className="fixed inset-0 bg-black/90 flex items-center justify-center z-50" onClick={onClose}>
@@ -76,9 +77,19 @@ function PhotoViewer({ photo, onClose, onNext, onPrev }: {
             >
                 ›
             </button>
-            <button onClick={onClose} className="absolute top-4 right-4 text-white/70 hover:text-white text-3xl">
-                &times;
-            </button>
+            {/* Top controls */}
+            <div className="absolute top-4 right-4 flex items-center gap-2">
+                <button
+                    onClick={(e) => { e.stopPropagation(); onDownload?.(); }}
+                    className="w-10 h-10 bg-green-500/80 rounded-full flex items-center justify-center text-white hover:bg-green-600 transition-colors"
+                    title="Download foto"
+                >
+                    ⬇
+                </button>
+                <button onClick={onClose} className="w-10 h-10 bg-zinc-700/80 rounded-full flex items-center justify-center text-white/70 hover:text-white hover:bg-zinc-600 transition-colors">
+                    ✕
+                </button>
+            </div>
         </div>
     );
 }
@@ -234,6 +245,24 @@ export default function AlbumsSection({ showToast }: { showToast: (msg: string, 
         }
     };
 
+    const handleDownloadPhoto = async (photo: Photo) => {
+        try {
+            const response = await fetch(photo.url);
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = photo.filename || 'photo.jpg';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(url);
+            showToast("Download dimulai!", "success");
+        } catch {
+            showToast("Gagal mengunduh foto", "error");
+        }
+    };
+
     if (loading) return <LoadingSkeleton />;
 
     // Album detail view
@@ -299,15 +328,29 @@ export default function AlbumsSection({ showToast }: { showToast: (msg: string, 
                                     <div className="absolute bottom-2 left-2 right-2">
                                         <p className="text-white text-sm truncate">{photo.caption || photo.filename}</p>
                                     </div>
-                                    <button
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            handleDeletePhoto(photo.id);
-                                        }}
-                                        className="absolute top-2 right-2 w-8 h-8 bg-red-500/80 rounded-full flex items-center justify-center text-white hover:bg-red-600"
-                                    >
-                                        ×
-                                    </button>
+                                    {/* Photo action buttons */}
+                                    <div className="absolute top-2 right-2 flex gap-1">
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleDownloadPhoto(photo);
+                                            }}
+                                            className="w-8 h-8 bg-green-500/80 rounded-full flex items-center justify-center text-white hover:bg-green-600 text-sm"
+                                            title="Download"
+                                        >
+                                            ⬇
+                                        </button>
+                                        <button
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                handleDeletePhoto(photo.id);
+                                            }}
+                                            className="w-8 h-8 bg-red-500/80 rounded-full flex items-center justify-center text-white hover:bg-red-600"
+                                            title="Hapus"
+                                        >
+                                            ×
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         ))}
@@ -321,6 +364,7 @@ export default function AlbumsSection({ showToast }: { showToast: (msg: string, 
                         onClose={() => setViewingPhoto(null)}
                         onNext={() => setViewingPhoto((viewingPhoto + 1) % photos.length)}
                         onPrev={() => setViewingPhoto((viewingPhoto - 1 + photos.length) % photos.length)}
+                        onDownload={() => handleDownloadPhoto(photos[viewingPhoto])}
                     />
                 )}
 

@@ -95,10 +95,14 @@ export function MobileDrawer({ isOpen, onClose, activeTab, setActiveTab, user, o
                 {/* User Profile Card */}
                 <div className="p-4 border-b border-zinc-800/50">
                     <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 rounded-full bg-linear-to-br from-green-500 to-emerald-600 flex items-center justify-center">
-                            <span className="text-black font-bold">
-                                {user?.name?.[0]?.toUpperCase() || "?"}
-                            </span>
+                        <div className="w-12 h-12 rounded-full bg-linear-to-br from-green-500 to-emerald-600 flex items-center justify-center overflow-hidden">
+                            {user?.profileImage ? (
+                                <img src={user.profileImage} alt="Profile" className="w-full h-full object-cover" />
+                            ) : (
+                                <span className="text-black font-bold">
+                                    {user?.name?.[0]?.toUpperCase() || "?"}
+                                </span>
+                            )}
                         </div>
                         <div className="flex-1 min-w-0">
                             <p className="font-medium truncate">

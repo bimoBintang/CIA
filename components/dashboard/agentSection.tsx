@@ -33,41 +33,41 @@ export function AgentsSection({ showToast, onAgentCreated, user }: { showToast: 
     async function handleSubmit(e: React.FormEvent) {
         e.preventDefault();
         setSubmitting(true);
+
         try {
-            // 1. Create agent first
-            const agentRes = await fetch("/api/agents", {
+            // Validate password on frontend first for better UX
+            if (formData.password.length < 8) {
+                showToast("Password minimal 8 karakter", "error");
+                setSubmitting(false);
+                return;
+            }
+            if (!/[A-Z]/.test(formData.password)) {
+                showToast("Password harus ada huruf besar", "error");
+                setSubmitting(false);
+                return;
+            }
+            if (!/[0-9]/.test(formData.password)) {
+                showToast("Password harus ada angka", "error");
+                setSubmitting(false);
+                return;
+            }
+
+            // Single atomic API call - creates Agent + User in transaction
+            const res = await fetch("/api/agents/with-account", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
                     codename: formData.codename,
                     email: formData.email,
-                    faculty: formData.faculty,
-                    level: formData.level
-                }),
-            });
-            const agentData = await agentRes.json();
-
-            if (!agentData.success) {
-                showToast(agentData.error || "Gagal membuat agent", "error");
-                setSubmitting(false);
-                return;
-            }
-
-            // 2. Create user account linked to agent
-            const userRes = await fetch("/api/users", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    name: formData.codename,
-                    email: formData.email,
                     password: formData.password,
-                    role: formData.role,
-                    agentId: agentData.data.id,
+                    faculty: formData.faculty,
+                    level: formData.level,
+                    role: formData.role
                 }),
             });
-            const userData = await userRes.json();
+            const data = await res.json();
 
-            if (userData.success) {
+            if (data.success) {
                 showToast("Agent & akun berhasil dibuat!", "success");
                 setShowModal(false);
                 setFormData({ codename: "", email: "", password: "", faculty: "", level: "Junior", role: "AGENT" });
@@ -76,10 +76,10 @@ export function AgentsSection({ showToast, onAgentCreated, user }: { showToast: 
                 fetchAgents(true);
                 onAgentCreated?.();
             } else {
-                showToast(userData.error || "Agent dibuat tapi akun gagal", "error");
+                showToast(data.error || "Gagal membuat agent", "error");
             }
         } catch {
-            showToast("Terjadi kesalahan", "error");
+            showToast("Terjadi kesalahan jaringan", "error");
         } finally {
             setSubmitting(false);
         }

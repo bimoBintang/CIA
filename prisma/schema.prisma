@@ -20,6 +20,7 @@ model User {
   password         String
   name             String
   role             Role            @default(AGENT)
+  profileImage     String? // URL to profile image
   agentId          String?         @unique
   agent            Agent?          @relation(fields: [agentId], references: [id])
   sessionToken     String?         @unique // Current active session token
