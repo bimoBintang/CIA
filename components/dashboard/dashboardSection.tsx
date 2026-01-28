@@ -109,7 +109,7 @@ export function DashboardSection() {
                 case "gallery":
                     return <AlbumsSection showToast={showToast} />;
                 case "settings":
-                    return <SettingsSection />;
+                    return <SettingsSection user={user} />;
                 default:
                     return <OverviewSection onNavigate={setActiveTab} />;
             }

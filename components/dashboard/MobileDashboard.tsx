@@ -51,7 +51,7 @@ export function MobileDashboard({ user, agents, onLogout, onAgentCreated }: Mobi
             case "gallery":
                 return <AlbumsSection showToast={showToast} />;
             case "settings":
-                return <SettingsSection />;
+                return <SettingsSection user={user} />;
             default:
                 return <OverviewSection onNavigate={setActiveTab} />;
         }
