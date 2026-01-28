@@ -1,121 +1,16 @@
 "use client";
 
-import React, { useState, useEffect, useCallback, lazy, Suspense } from "react";
+import { Pagination, Stats, VisitorLog } from "@/types";
+import { useCallback, useEffect, useState } from "react";
+import { DeviceChart } from "../charts/deviceChart";
+import { CountryChart } from "../charts/countryChart";
 
-// Lazy load chart components - only load when needed
-const LazyPieChart = lazy(() => import("recharts").then(mod => ({ default: mod.PieChart })));
-const LazyPie = lazy(() => import("recharts").then(mod => ({ default: mod.Pie })));
-const LazyCell = lazy(() => import("recharts").then(mod => ({ default: mod.Cell })));
-const LazyResponsiveContainer = lazy(() => import("recharts").then(mod => ({ default: mod.ResponsiveContainer })));
-const LazyTooltip = lazy(() => import("recharts").then(mod => ({ default: mod.Tooltip })));
-const LazyBarChart = lazy(() => import("recharts").then(mod => ({ default: mod.BarChart })));
-const LazyBar = lazy(() => import("recharts").then(mod => ({ default: mod.Bar })));
-const LazyXAxis = lazy(() => import("recharts").then(mod => ({ default: mod.XAxis })));
-const LazyYAxis = lazy(() => import("recharts").then(mod => ({ default: mod.YAxis })));
-
-interface VisitorLog {
-    id: string;
-    ip: string;
-    ipFull?: string;
-    device: string;
-    browser: string;
-    os: string;
-    country?: string;
-    city?: string;
-    region?: string;
-    isp?: string;
-    timezone?: string;
-    fingerprint?: string;
-    page: string;
-    referer?: string;
-    userId?: string;
-    createdAt: string;
-}
-
-interface Stats {
-    total: number;
-    uniqueVisitors: number;
-    devices: Record<string, number>;
-    topBrowsers: { browser: string; count: number }[];
-    topCountries: { country: string; count: number }[];
-}
-
-interface Pagination {
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-}
 
 const DEVICE_COLORS = {
     desktop: "#10b981",
     mobile: "#3b82f6",
     tablet: "#f59e0b",
 };
-
-const COUNTRY_COLORS = ["#10b981", "#3b82f6", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#06b6d4", "#84cc16"];
-
-// Simple chart fallback
-function ChartSkeleton() {
-    return (
-        <div className="h-48 flex items-center justify-center">
-            <div className="animate-pulse bg-zinc-800 rounded-lg w-full h-full" />
-        </div>
-    );
-}
-
-// Separate chart component for code splitting
-function DeviceChart({ deviceData }: { deviceData: { name: string; value: number; color: string }[] }) {
-    return (
-        <Suspense fallback={<ChartSkeleton />}>
-            <LazyResponsiveContainer width="100%" height="100%">
-                <LazyPieChart>
-                    <LazyPie
-                        data={deviceData}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={40}
-                        outerRadius={70}
-                        paddingAngle={5}
-                        dataKey="value"
-                        label={({ name, percent }: { name?: string; percent?: number }) => `${name || ''} ${((percent || 0) * 100).toFixed(0)}%`}
-                        labelLine={false}
-                    >
-                        {deviceData.map((entry, index) => (
-                            <LazyCell key={`cell-${index}`} fill={entry.color} />
-                        ))}
-                    </LazyPie>
-                    <LazyTooltip
-                        contentStyle={{ backgroundColor: "#18181b", border: "1px solid #27272a", borderRadius: "8px" }}
-                        itemStyle={{ color: "#fff" }}
-                    />
-                </LazyPieChart>
-            </LazyResponsiveContainer>
-        </Suspense>
-    );
-}
-
-function CountryChart({ countryData }: { countryData: { country: string; count: number }[] }) {
-    return (
-        <Suspense fallback={<ChartSkeleton />}>
-            <LazyResponsiveContainer width="100%" height="100%">
-                <LazyBarChart data={countryData} layout="vertical" margin={{ left: 60 }}>
-                    <LazyXAxis type="number" stroke="#52525b" fontSize={12} />
-                    <LazyYAxis type="category" dataKey="country" stroke="#52525b" fontSize={12} width={55} />
-                    <LazyTooltip
-                        contentStyle={{ backgroundColor: "#18181b", border: "1px solid #27272a", borderRadius: "8px" }}
-                        itemStyle={{ color: "#fff" }}
-                    />
-                    <LazyBar dataKey="count" radius={[0, 4, 4, 0]}>
-                        {countryData.map((_, index) => (
-                            <LazyCell key={`cell-${index}`} fill={COUNTRY_COLORS[index % COUNTRY_COLORS.length]} />
-                        ))}
-                    </LazyBar>
-                </LazyBarChart>
-            </LazyResponsiveContainer>
-        </Suspense>
-    );
-}
 
 export default function DeviceTrackingSection() {
     const [logs, setLogs] = useState<VisitorLog[]>([]);

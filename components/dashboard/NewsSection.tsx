@@ -1,19 +1,9 @@
 "use client";
 
+import { News } from '@/types';
 import React, { useState, useEffect, useCallback } from 'react';
 
-interface News {
-    id: string;
-    title: string;
-    content: string;
-    excerpt?: string;
-    coverImage?: string;
-    category: string;
-    published: boolean;
-    author?: { codename: string };
-    createdAt: string;
-    updatedAt: string;
-}
+
 
 interface NewsSectionProps {
     showToast: (msg: string, type: "success" | "error") => void;
@@ -145,14 +135,14 @@ export default function NewsSection({ showToast }: NewsSectionProps) {
     }
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-4 md:space-y-6">
             {/* Header */}
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                    <h1 className="text-2xl font-bold mb-2">📰 Berita</h1>
-                    <p className="text-zinc-500">Kelola berita dan pengumuman ({news.length} artikel)</p>
+                    <h1 className="text-lg md:text-2xl font-bold mb-1">📰 Berita</h1>
+                    <p className="text-zinc-500 text-sm">Kelola berita dan pengumuman ({news.length} artikel)</p>
                 </div>
-                <button onClick={() => setShowModal(true)} className="btn-primary">
+                <button onClick={() => setShowModal(true)} className="btn-primary text-sm">
                     + Buat Berita
                 </button>
             </div>
@@ -188,18 +178,18 @@ export default function NewsSection({ showToast }: NewsSectionProps) {
                     </button>
                 </div>
             ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-2 md:gap-4">
                     {filteredNews.map(item => {
                         const catInfo = getCategoryInfo(item.category);
                         return (
                             <div
                                 key={item.id}
-                                className="card glass-hover cursor-pointer group"
+                                className="card glass-hover cursor-pointer group p-2 md:p-4"
                                 onClick={() => setSelectedNews(item)}
                             >
                                 {/* Cover Image */}
                                 {item.coverImage ? (
-                                    <div className="aspect-video rounded-lg overflow-hidden mb-4 -mx-5 -mt-5">
+                                    <div className="aspect-video rounded-lg overflow-hidden mb-2 md:mb-4 -mx-2 -mt-2 md:-mx-5 md:-mt-5">
                                         <img
                                             src={item.coverImage}
                                             alt={item.title}
@@ -207,30 +197,30 @@ export default function NewsSection({ showToast }: NewsSectionProps) {
                                         />
                                     </div>
                                 ) : (
-                                    <div className="aspect-video rounded-lg bg-gradient-to-br from-zinc-800 to-zinc-900 mb-4 -mx-5 -mt-5 flex items-center justify-center">
-                                        <span className="text-4xl">{catInfo.icon}</span>
+                                    <div className="aspect-video rounded-lg bg-linear-gradient-to-br from-zinc-800 to-zinc-900 mb-2 md:mb-4 -mx-2 -mt-2 md:-mx-5 md:-mt-5 flex items-center justify-center">
+                                        <span className="text-2xl md:text-4xl">{catInfo.icon}</span>
                                     </div>
                                 )}
 
                                 {/* Content */}
-                                <div className="flex items-center gap-2 mb-2">
-                                    <span className={`text-xs px-2 py-1 rounded ${item.published ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'
+                                <div className="flex items-center gap-1 mb-1 md:mb-2 flex-wrap">
+                                    <span className={`text-[10px] md:text-xs px-1.5 md:px-2 py-0.5 md:py-1 rounded ${item.published ? 'bg-green-500/20 text-green-400' : 'bg-yellow-500/20 text-yellow-400'
                                         }`}>
-                                        {item.published ? '✓ Published' : '⏳ Draft'}
+                                        {item.published ? '✓' : '⏳'}
                                     </span>
-                                    <span className="text-xs px-2 py-1 rounded bg-zinc-800 text-zinc-400">
-                                        {catInfo.icon} {catInfo.label}
+                                    <span className="text-[10px] md:text-xs px-1.5 md:px-2 py-0.5 md:py-1 rounded bg-zinc-800 text-zinc-400">
+                                        {catInfo.icon}
                                     </span>
                                 </div>
 
-                                <h3 className="font-semibold text-lg mb-2 line-clamp-2">{item.title}</h3>
-                                <p className="text-sm text-zinc-500 line-clamp-2 mb-3">
+                                <h3 className="font-semibold text-xs md:text-lg mb-1 md:mb-2 line-clamp-2">{item.title}</h3>
+                                <p className="text-[10px] md:text-sm text-zinc-500 line-clamp-2 mb-2 md:mb-3 hidden sm:block">
                                     {item.excerpt || item.content.substring(0, 100)}
                                 </p>
 
-                                <div className="flex items-center justify-between text-xs text-zinc-500">
-                                    <span>{item.author?.codename || 'Unknown'}</span>
-                                    <span>{new Date(item.createdAt).toLocaleDateString('id-ID')}</span>
+                                <div className="flex items-center justify-between text-[10px] md:text-xs text-zinc-500">
+                                    <span className="truncate">{item.author?.codename || 'Unknown'}</span>
+                                    <span className="hidden sm:inline">{new Date(item.createdAt).toLocaleDateString('id-ID')}</span>
                                 </div>
                             </div>
                         );
@@ -275,8 +265,8 @@ export default function NewsSection({ showToast }: NewsSectionProps) {
                                     <button
                                         onClick={() => handleTogglePublish(selectedNews)}
                                         className={`px-4 py-2 rounded-lg text-sm ${selectedNews.published
-                                                ? 'bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30'
-                                                : 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
+                                            ? 'bg-yellow-500/20 text-yellow-400 hover:bg-yellow-500/30'
+                                            : 'bg-green-500/20 text-green-400 hover:bg-green-500/30'
                                             }`}
                                     >
                                         {selectedNews.published ? 'Unpublish' : 'Publish'}

@@ -38,7 +38,7 @@ export function AboutSection() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-16">
+        <div className="grid grid-cols-3 md:grid-cols-3 gap-6 mb-16">
           {stats.map((stat, i) => (
             <div key={i} className="card text-center glass-hover">
               <div className="text-4xl font-bold text-gradient mb-2">{stat.value}</div>

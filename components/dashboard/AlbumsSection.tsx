@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { LoadingSkeleton } from "../sekeletons/LoadingSekeleton";
 
 interface Album {
     id: string;
@@ -21,28 +22,7 @@ interface Photo {
     createdAt: string;
 }
 
-// Loading Skeleton
-function AlbumsSkeleton() {
-    return (
-        <div className="space-y-6">
-            <div className="flex items-center justify-between">
-                <div className="h-8 w-48 bg-zinc-800 rounded animate-pulse" />
-                <div className="h-10 w-32 bg-zinc-800 rounded animate-pulse" />
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {[1, 2, 3, 4, 5, 6].map((i) => (
-                    <div key={i} className="card overflow-hidden">
-                        <div className="h-48 bg-zinc-800 animate-pulse" />
-                        <div className="p-4 space-y-2">
-                            <div className="h-5 w-3/4 bg-zinc-800 rounded animate-pulse" />
-                            <div className="h-4 w-1/2 bg-zinc-800 rounded animate-pulse" />
-                        </div>
-                    </div>
-                ))}
-            </div>
-        </div>
-    );
-}
+
 
 // Modal Component
 function Modal({ isOpen, onClose, title, children }: {
@@ -254,7 +234,7 @@ export default function AlbumsSection({ showToast }: { showToast: (msg: string, 
         }
     };
 
-    if (loading) return <AlbumsSkeleton />;
+    if (loading) return <LoadingSkeleton />;
 
     // Album detail view
     if (selectedAlbum) {
@@ -315,7 +295,7 @@ export default function AlbumsSection({ showToast }: { showToast: (msg: string, 
                                     alt={photo.caption || photo.filename}
                                     className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                                 />
-                                <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
+                                <div className="absolute inset-0 bg-linear-to-t from-black/60 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
                                     <div className="absolute bottom-2 left-2 right-2">
                                         <p className="text-white text-sm truncate">{photo.caption || photo.filename}</p>
                                     </div>
@@ -399,7 +379,7 @@ export default function AlbumsSection({ showToast }: { showToast: (msg: string, 
                     </button>
                 </div>
             ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                <div className="grid grid-cols-2 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {albums.map((album) => (
                         <div
                             key={album.id}

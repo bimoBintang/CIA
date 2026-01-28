@@ -1,64 +1,9 @@
+
+import { Database } from '@/types';
 import { promises as fs } from 'fs';
 import path from 'path';
 
 const DB_PATH = path.join(process.cwd(), 'data', 'db.json');
-
-export interface Agent {
-    id: string;
-    codename: string;
-    email: string;
-    faculty: string;
-    level: string;
-    status: string;
-    missions: number;
-    createdAt: string;
-}
-
-export interface Operation {
-    id: string;
-    name: string;
-    status: string;
-    progress: number;
-    deadline: string;
-    teamSize: number;
-    createdAt: string;
-}
-
-export interface Intel {
-    id: string;
-    title: string;
-    content: string | null;
-    priority: string;
-    source: string;
-    createdAt: string;
-}
-
-export interface Message {
-    id: string;
-    fromAgent: string;
-    toAgent: string;
-    content: string;
-    read: boolean;
-    createdAt: string;
-}
-
-export interface Application {
-    id: string;
-    name: string;
-    email: string;
-    faculty: string;
-    reason: string;
-    status: string;
-    createdAt: string;
-}
-
-export interface Database {
-    agents: Agent[];
-    operations: Operation[];
-    intel: Intel[];
-    messages: Message[];
-    applications: Application[];
-}
 
 // Generate unique ID
 export function generateId(prefix: string): string {
@@ -76,7 +21,7 @@ export async function readDb(): Promise<Database> {
             agents: [],
             operations: [],
             intel: [],
-            messages: [],
+            news: [],
             applications: [],
         };
     }

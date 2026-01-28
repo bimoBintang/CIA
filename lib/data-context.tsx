@@ -1,52 +1,8 @@
 "use client";
 
+import { Agent, Intel, News, Operation, Stats, VisitorLog } from '@/types';
 import { createContext, useContext, useState, useCallback, ReactNode } from 'react';
 
-// Types
-interface Agent {
-    id: string;
-    codename: string;
-    email: string;
-    faculty: string;
-    level: string;
-    status: string;
-    missions: number;
-    createdAt: string;
-}
-
-interface Operation {
-    id: string;
-    name: string;
-    status: string;
-    progress: number;
-    deadline: string;
-    teamSize: number;
-}
-
-interface Intel {
-    id: string;
-    title: string;
-    content: string | null;
-    priority: string;
-    createdAt: string;
-    source?: { codename: string };
-}
-
-interface Message {
-    id: string;
-    content: string;
-    read: boolean;
-    createdAt: string;
-    fromAgent?: { codename: string };
-    toAgent?: { codename: string };
-}
-
-interface Stats {
-    agents: { total: number; online: number; away: number; offline: number };
-    operations: { total: number; active: number; planning: number; completed: number };
-    intel: { total: number; high: number; medium: number; low: number };
-    messages: { total: number; unread: number };
-}
 
 interface CacheEntry<T> {
     data: T;
@@ -58,29 +14,33 @@ interface DataContextType {
     agents: Agent[];
     operations: Operation[];
     intel: Intel[];
-    messages: Message[];
+    news: News[];
     stats: Stats | null;
     unreadCount: number;
+    visitors: VisitorLog[];
 
     // Loading states
     loading: {
         agents: boolean;
         operations: boolean;
         intel: boolean;
-        messages: boolean;
         stats: boolean;
+        visitors: boolean;
+        news: boolean;
     };
 
     // Fetch functions (with cache)
     fetchAgents: (force?: boolean) => Promise<void>;
     fetchOperations: (force?: boolean) => Promise<void>;
+    fetchVisitors: (page?: number, setContext?: (data: any) => void, force?: boolean) => Promise<void>;
     fetchIntel: (force?: boolean) => Promise<void>;
-    fetchMessages: (force?: boolean) => Promise<void>;
+    fetchNews: (force?: boolean) => Promise<void>;
     fetchStats: (force?: boolean) => Promise<void>;
     fetchAll: (force?: boolean) => Promise<void>;
 
+
     // Invalidate cache
-    invalidateCache: (key?: 'agents' | 'operations' | 'intel' | 'messages' | 'stats') => void;
+    invalidateCache: (key?: 'agents' | 'operations' | 'intel' | 'news' | 'stats') => void;
 }
 
 const CACHE_DURATION = 60000; // 1 minute cache
@@ -93,25 +53,28 @@ export function DataProvider({ children }: { children: ReactNode }) {
         agents?: CacheEntry<Agent[]>;
         operations?: CacheEntry<Operation[]>;
         intel?: CacheEntry<Intel[]>;
-        messages?: CacheEntry<{ data: Message[]; unread: number }>;
         stats?: CacheEntry<Stats>;
+        visitors?: CacheEntry<any>;
+        news?: CacheEntry<News[]>;
     }>({});
 
     // Data state
     const [agents, setAgents] = useState<Agent[]>([]);
     const [operations, setOperations] = useState<Operation[]>([]);
     const [intel, setIntel] = useState<Intel[]>([]);
-    const [messages, setMessages] = useState<Message[]>([]);
     const [stats, setStats] = useState<Stats | null>(null);
     const [unreadCount, setUnreadCount] = useState(0);
+    const [visitors, setVisitors] = useState<VisitorLog[]>([]);
+    const [news, setNews] = useState<News[]>([]);
 
     // Loading states
     const [loading, setLoading] = useState({
         agents: false,
         operations: false,
         intel: false,
-        messages: false,
+        news: false,
         stats: false,
+        visitors: false,
     });
 
     const isCacheValid = useCallback((timestamp?: number) => {
@@ -191,32 +154,6 @@ export function DataProvider({ children }: { children: ReactNode }) {
         }
     }, [cache.intel, isCacheValid]);
 
-    const fetchMessages = useCallback(async (force = false) => {
-        if (!force && cache.messages && isCacheValid(cache.messages.timestamp)) {
-            setMessages(cache.messages.data.data);
-            setUnreadCount(cache.messages.data.unread);
-            return;
-        }
-
-        setLoading(prev => ({ ...prev, messages: true }));
-        try {
-            const res = await fetch('/api/messages');
-            const data = await res.json();
-            if (data.success) {
-                setMessages(data.data);
-                setUnreadCount(data.unread);
-                setCache(prev => ({
-                    ...prev,
-                    messages: { data: { data: data.data, unread: data.unread }, timestamp: Date.now() }
-                }));
-            }
-        } catch (error) {
-            console.error('Error fetching messages:', error);
-        } finally {
-            setLoading(prev => ({ ...prev, messages: false }));
-        }
-    }, [cache.messages, isCacheValid]);
-
     const fetchStats = useCallback(async (force = false) => {
         if (!force && cache.stats && isCacheValid(cache.stats.timestamp)) {
             setStats(cache.stats.data);
@@ -241,17 +178,65 @@ export function DataProvider({ children }: { children: ReactNode }) {
         }
     }, [cache.stats, isCacheValid]);
 
+    const fetchNews = useCallback(async (force = false) => {
+        if (!force && cache.news && isCacheValid(cache.news.timestamp)) {
+            setNews(cache.news.data);
+            return;
+        }
+
+        setLoading(prev => ({ ...prev, news: true }));
+        try {
+            const res = await fetch('/api/news');
+            const data = await res.json();
+            if (data.success) {
+                setNews(data.data);
+                setCache(prev => ({
+                    ...prev,
+                    news: { data: data.data, timestamp: Date.now() }
+                }));
+            }
+        } catch (error) {
+            console.error('Error fetching news:', error);
+        } finally {
+            setLoading(prev => ({ ...prev, news: false }));
+        }
+    }, [cache.news, isCacheValid]);
+
+    const fetchVisitors = useCallback(async (page = 1, setContext?:(data: any) => void, force = false) => {
+        if (!force && cache.visitors && isCacheValid(cache.visitors.timestamp)) {
+            setVisitors(cache.visitors.data);
+            return;
+        }
+
+        setLoading(prev => ({ ...prev, visitors: true }));
+        try {
+            const res = await fetch(`/api/visitors?page=${page}&limit=20`);
+            const data = await res.json();
+            if (data.success) {
+                if(setContext) setContext(data.data);
+                setCache(prev => ({
+                    ...prev,
+                    visitors: { data: data.data, timestamp: Date.now() }
+                }));
+            }
+        } catch (error) {
+            console.error('Error fetching visitors:', error);
+        } finally {
+            setLoading(prev => ({ ...prev, visitors: false }));
+        }
+    }, [cache.visitors, isCacheValid]);
+
     const fetchAll = useCallback(async (force = false) => {
         await Promise.all([
             fetchStats(force),
             fetchAgents(force),
             fetchOperations(force),
             fetchIntel(force),
-            fetchMessages(force),
+            fetchVisitors(1, undefined, force),
         ]);
-    }, [fetchStats, fetchAgents, fetchOperations, fetchIntel, fetchMessages]);
+    }, [fetchStats, fetchAgents, fetchOperations, fetchIntel, fetchVisitors]);
 
-    const invalidateCache = useCallback((key?: 'agents' | 'operations' | 'intel' | 'messages' | 'stats') => {
+    const invalidateCache = useCallback((key?: 'agents' | 'operations' | 'intel' | 'news' | 'stats') => {
         if (key) {
             setCache(prev => ({ ...prev, [key]: undefined }));
         } else {
@@ -264,14 +249,16 @@ export function DataProvider({ children }: { children: ReactNode }) {
             agents,
             operations,
             intel,
-            messages,
+            news,
+            visitors,
             stats,
             unreadCount,
             loading,
             fetchAgents,
             fetchOperations,
             fetchIntel,
-            fetchMessages,
+            fetchNews,
+            fetchVisitors,
             fetchStats,
             fetchAll,
             invalidateCache,
