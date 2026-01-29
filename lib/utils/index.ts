@@ -16,32 +16,20 @@ export function getRelativeTime(dateString: string): string {
     return `${days}d lalu`;
 }
 
-export const LazyContainer = {
-    ResponsiveContainer: lazy(() => import("recharts").then(mod => ({ default: mod.ResponsiveContainer }))),
-    PieChart: lazy(() => import("recharts").then(mod => ({ default: mod.PieChart }))),
-    Pie: lazy(() => import("recharts").then(mod => ({ default: mod.Pie }))),
-    Cell: lazy(() => import("recharts").then(mod => ({ default: mod.Cell }))),
-    Tooltip: lazy(() => import("recharts").then(mod => ({ default: mod.Tooltip }))),
-    XAxis: lazy(() => import("recharts").then(mod => ({ default: mod.XAxis }))),
-    YAxis: lazy(() => import("recharts").then(mod => ({ default: mod.YAxis }))),
-    BarChart: lazy(() => import("recharts").then(mod => ({ default: mod.BarChart }))),
-    Bar: lazy(() => import("recharts").then(mod => ({ default: mod.Bar }))),
-}
-
 
 export const getLevelColor = (level: string) => {
-        switch (level) {
-            case "elite": return "from-yellow-500 to-orange-500";
-            case "senior": return "from-purple-500 to-pink-500";
-            case "field": return "from-blue-500 to-cyan-500";
-            default: return "from-green-500 to-emerald-500";
-        }
-    };
+    switch (level) {
+        case "elite": return "from-yellow-500 to-orange-500";
+        case "senior": return "from-purple-500 to-pink-500";
+        case "field": return "from-blue-500 to-cyan-500";
+        default: return "from-green-500 to-emerald-500";
+    }
+};
 
 export const getStatusColor = (status: string) => {
-        switch (status) {
-            case "online": return "text-green-400";
-            case "away": return "text-yellow-400";
-            default: return "text-zinc-500";
-        }
-    };
+    switch (status) {
+        case "online": return "text-green-400";
+        case "away": return "text-yellow-400";
+        default: return "text-zinc-500";
+    }
+};

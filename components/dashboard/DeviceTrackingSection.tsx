@@ -2,8 +2,18 @@
 
 import { Pagination, Stats, VisitorLog } from "@/types";
 import { useCallback, useEffect, useState, Suspense } from "react";
-import { DeviceChart } from "../charts/deviceChart";
-import { CountryChart } from "../charts/countryChart";
+import dynamic from "next/dynamic";
+
+// Dynamically import charts with no SSR to prevent dimension calculation errors during initialization
+const DeviceChart = dynamic(() => import("../charts/deviceChart").then(mod => mod.DeviceChart), {
+    ssr: false,
+    loading: () => <div className="h-full flex items-center justify-center text-zinc-500 text-sm">Initializing chart...</div>
+});
+
+const CountryChart = dynamic(() => import("../charts/countryChart").then(mod => mod.CountryChart), {
+    ssr: false,
+    loading: () => <div className="h-full flex items-center justify-center text-zinc-500 text-sm">Initializing chart...</div>
+});
 
 
 const DEVICE_COLORS = {
@@ -118,10 +128,8 @@ export default function DeviceTrackingSection() {
                         <span>📱 Device Breakdown</span>
                         {deviceData.length === 0 && <span className="text-xs font-normal text-zinc-500">(No data)</span>}
                     </h3>
-                    <div className="h-64">
-                        <Suspense fallback={<div className="h-full flex items-center justify-center text-zinc-500 text-sm">Loading charts...</div>}>
-                            <DeviceChart deviceData={deviceData} />
-                        </Suspense>
+                    <div className="h-64 min-h-[256px] w-full relative">
+                        <DeviceChart deviceData={deviceData} />
                     </div>
                 </div>
 
@@ -130,10 +138,8 @@ export default function DeviceTrackingSection() {
                         <span>🌍 Top Countries</span>
                         {countryData.length === 0 && <span className="text-xs font-normal text-zinc-500">(No data)</span>}
                     </h3>
-                    <div className="h-64">
-                        <Suspense fallback={<div className="h-full flex items-center justify-center text-zinc-500 text-sm">Loading charts...</div>}>
-                            <CountryChart countryData={countryData} />
-                        </Suspense>
+                    <div className="h-64 min-h-[256px] w-full relative">
+                        <CountryChart countryData={countryData} />
                     </div>
                 </div>
             </div>
