@@ -59,6 +59,22 @@ async function checkBannedIP(ip: string, baseUrl: string): Promise<{ banned: boo
 
 export async function middleware(request: NextRequest) {
     const { pathname } = request.nextUrl;
+    const host = request.headers.get('host') || '';
+
+    // Subdomain routing (Rewrites)
+    if (host.startsWith('auth.')) {
+        // Rewrite auth.* to /login unless it's already there or an api/static file
+        if (pathname === '/') {
+            return NextResponse.rewrite(new URL('/login', request.url));
+        }
+    }
+
+    if (host.startsWith('dashboard.')) {
+        // Rewrite dashboard.* root to /dashboard
+        if (pathname === '/') {
+            return NextResponse.rewrite(new URL('/dashboard', request.url));
+        }
+    }
 
     // Get client IP (supports Cloudflare)
     const ip = getClientIP(request);
