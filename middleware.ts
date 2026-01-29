@@ -63,7 +63,7 @@ export async function middleware(request: NextRequest) {
     const isProduction = host.endsWith('ciaa.web.id');
     const baseDomain = isProduction ? 'ciaa.web.id' : 'localhost:3000';
 
-    // 1. Authentication Check (Do this early for all routing decisions)
+    // Authentication Check (Do this early for all routing decisions)
     const token = request.cookies.get('auth-token')?.value;
     let isAuthenticated = false;
     let userRole: string | null = null;

@@ -33,7 +33,7 @@ function SessionDebug() {
 }
 
 
-export function OverviewSection({ onNavigate }: { onNavigate: (tab: string) => void }) {
+export function OverviewSection({ onNavigate }: { onNavigate: (tab: string, id?: string) => void }) {
     const [stats, setStats] = useState<Stats | null>(null);
     const [intel, setIntel] = useState<Intel[]>([]);
     const [loading, setLoading] = useState(true);
@@ -86,7 +86,11 @@ export function OverviewSection({ onNavigate }: { onNavigate: (tab: string) => v
                     <h3 className="text-lg font-semibold mb-4">Recent Intel</h3>
                     <div className="space-y-4">
                         {intel.map((item) => (
-                            <div key={item.id} className="flex items-start gap-4 p-3 rounded-lg hover:bg-zinc-800/30 transition-colors">
+                            <div
+                                key={item.id}
+                                className="flex items-start gap-4 p-3 rounded-lg hover:bg-zinc-800/30 transition-colors cursor-pointer"
+                                onClick={() => onNavigate("intel", item.id)}
+                            >
                                 <div className={`w-2 h-2 rounded-full mt-2 ${item.priority === "high" ? "bg-red-500" : item.priority === "medium" ? "bg-yellow-500" : "bg-blue-500"}`} />
                                 <div className="flex-1">
                                     <p className="text-sm">{item.title}</p>

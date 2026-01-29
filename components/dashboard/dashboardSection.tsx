@@ -1,7 +1,7 @@
 "use client";
 
 import { Agent, User } from "@/types";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { LoadingSkeleton } from "../sekeletons/LoadingSekeleton";
 import { AgentsSection } from "./agentSection";
@@ -18,15 +18,34 @@ import { Toast } from "../toast";
 import { MobileDashboard } from "./MobileDashboard";
 import { useIsMobile } from "@/hooks/useMediaQuery";
 
-
 export function DashboardSection() {
     const router = useRouter();
+    const pathname = usePathname();
+    const searchParams = useSearchParams();
     const isMobile = useIsMobile();
-    const [activeTab, setActiveTab] = useState("overview");
+
+    // Derive activeTab from URL search params (?tab=...)
+    const activeTab = searchParams.get("tab") || "overview";
+    const selectedId = searchParams.get("id") || "";
+
     const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
     const [agents, setAgents] = useState<Agent[]>([]);
     const [user, setUser] = useState<User | null>(null);
     const [loading, setLoading] = useState(true);
+
+    const setActiveTab = useCallback((tab: string, id?: string) => {
+        const params = new URLSearchParams(searchParams.toString());
+        params.set("tab", tab);
+
+        if (id) {
+            params.set("id", id);
+        } else if (tab !== searchParams.get("tab")) {
+            params.delete("id");
+            params.delete("create");
+        }
+
+        router.push(`${pathname}?${params.toString()}`);
+    }, [router, pathname, searchParams]);
 
     useEffect(() => {
         async function fetchUser() {

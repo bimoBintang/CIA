@@ -2,18 +2,34 @@
 
 import { fetchWithCache, invalidateCache } from "@/lib/cache";
 import { Agent, User } from "@/types";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { Modal } from "../modalSection";
 import { LoadingSkeleton } from "../sekeletons/LoadingSekeleton";
 
-
 export function AgentsSection({ showToast, onAgentCreated, user }: { showToast: (msg: string, type: "success" | "error") => void; onAgentCreated?: () => void; user: User | null }) {
+    const router = useRouter();
+    const pathname = usePathname();
+    const searchParams = useSearchParams();
+
+    // Derive state from URL
+    const selectedId = searchParams.get("id") || "";
+    const isCreating = searchParams.get("create") === "true";
+
     const [agents, setAgents] = useState<Agent[]>([]);
     const [loading, setLoading] = useState(true);
-    const [showModal, setShowModal] = useState(false);
     const [formData, setFormData] = useState({ codename: "", email: "", password: "", faculty: "", level: "Junior", role: "AGENT" });
     const [submitting, setSubmitting] = useState(false);
     const isAdmin = user?.role === "ADMIN";
+
+    const updateUrl = useCallback((updates: Record<string, string | null>) => {
+        const params = new URLSearchParams(searchParams.toString());
+        Object.entries(updates).forEach(([key, value]) => {
+            if (value === null) params.delete(key);
+            else params.set(key, value);
+        });
+        router.push(`${pathname}?${params.toString()}`);
+    }, [router, pathname, searchParams]);
 
     const fetchAgents = useCallback(async (force = false) => {
         try {
@@ -35,7 +51,6 @@ export function AgentsSection({ showToast, onAgentCreated, user }: { showToast: 
         setSubmitting(true);
 
         try {
-            // Validate password on frontend first for better UX
             if (formData.password.length < 8) {
                 showToast("Password minimal 8 karakter", "error");
                 setSubmitting(false);
@@ -52,7 +67,6 @@ export function AgentsSection({ showToast, onAgentCreated, user }: { showToast: 
                 return;
             }
 
-            // Single atomic API call - creates Agent + User in transaction
             const res = await fetch("/api/agents/with-account", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
@@ -69,7 +83,7 @@ export function AgentsSection({ showToast, onAgentCreated, user }: { showToast: 
 
             if (data.success) {
                 showToast("Agent & akun berhasil dibuat!", "success");
-                setShowModal(false);
+                updateUrl({ create: null }); // Close modal via URL
                 setFormData({ codename: "", email: "", password: "", faculty: "", level: "Junior", role: "AGENT" });
                 invalidateCache("/api/agents");
                 invalidateCache("/api/stats");
@@ -94,7 +108,14 @@ export function AgentsSection({ showToast, onAgentCreated, user }: { showToast: 
                     <h1 className="text-2xl font-bold mb-2">Agents Directory</h1>
                     <p className="text-zinc-500">Manage and monitor all registered agents ({agents.length} total)</p>
                 </div>
-                {isAdmin && <button onClick={() => setShowModal(true)} className="btn-primary">+ Add Agent</button>}
+                {isAdmin && (
+                    <button
+                        onClick={() => updateUrl({ create: "true" })}
+                        className="btn-primary"
+                    >
+                        + Add Agent
+                    </button>
+                )}
             </div>
 
             <div className="card overflow-hidden">
@@ -110,13 +131,17 @@ export function AgentsSection({ showToast, onAgentCreated, user }: { showToast: 
                     </thead>
                     <tbody>
                         {agents.map((agent) => (
-                            <tr key={agent.id} className="border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors">
+                            <tr
+                                key={agent.id}
+                                onClick={() => updateUrl({ id: agent.id })}
+                                className={`border-b border-zinc-800/50 hover:bg-zinc-800/30 transition-colors cursor-pointer ${selectedId === agent.id ? "bg-green-500/10" : ""}`}
+                            >
                                 <td className="py-4 px-4">
                                     <div className="flex items-center gap-3">
                                         <div className="w-10 h-10 rounded-full bg-linear-to-br from-green-500 to-emerald-600 flex items-center justify-center">
                                             <span className="text-black font-bold text-sm">{agent.codename.split(" ")[1]?.[0] || "A"}</span>
                                         </div>
-                                        <span className="font-medium">{agent.codename}</span>
+                                        <span className={`font-medium ${selectedId === agent.id ? "text-green-400" : ""}`}>{agent.codename}</span>
                                     </div>
                                 </td>
                                 <td className="py-4 px-4 text-zinc-400">{agent.faculty}</td>
@@ -138,7 +163,7 @@ export function AgentsSection({ showToast, onAgentCreated, user }: { showToast: 
                 </table>
             </div>
 
-            <Modal isOpen={showModal} onClose={() => setShowModal(false)} title="Add New Agent & Account">
+            <Modal isOpen={isCreating} onClose={() => updateUrl({ create: null })} title="Add New Agent & Account">
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div>
                         <label className="block text-sm text-zinc-400 mb-2">Codename</label>

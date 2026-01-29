@@ -8,7 +8,7 @@ import { Intel } from "@/types";
 import { Agent } from "@/types";
 import { Modal } from "../modalSection";
 import { LoadingSkeleton } from "../sekeletons/LoadingSekeleton";
-
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
 
 interface Props {
     showToast: ShowToast;
@@ -16,12 +16,27 @@ interface Props {
 }
 
 export default function IntelSection({ showToast, agents }: Props) {
+    const router = useRouter();
+    const pathname = usePathname();
+    const searchParams = useSearchParams();
+
+    // Derive state from URL
+    const selectedId = searchParams.get("id") || "";
+    const isCreating = searchParams.get("create") === "true";
+
     const [intel, setIntel] = useState<Intel[]>([]);
     const [loading, setLoading] = useState(true);
-    const [showModal, setShowModal] = useState(false);
-    const [selectedIntel, setSelectedIntel] = useState<Intel | null>(null);
     const [formData, setFormData] = useState({ title: "", content: "", priority: "medium", sourceId: "" });
     const [submitting, setSubmitting] = useState(false);
+
+    const updateUrl = useCallback((updates: Record<string, string | null>) => {
+        const params = new URLSearchParams(searchParams.toString());
+        Object.entries(updates).forEach(([key, value]) => {
+            if (value === null) params.delete(key);
+            else params.set(key, value);
+        });
+        router.push(`${pathname}?${params.toString()}`);
+    }, [router, pathname, searchParams]);
 
     const fetchIntel = useCallback(async (force = false) => {
         try {
@@ -50,7 +65,7 @@ export default function IntelSection({ showToast, agents }: Props) {
             const data = await res.json();
             if (data.success) {
                 showToast("Intel report berhasil dikirim!", "success");
-                setShowModal(false);
+                updateUrl({ create: null }); // Close modal via URL
                 setFormData({ title: "", content: "", priority: "medium", sourceId: "" });
                 invalidateCache("/api/intel");
                 invalidateCache("/api/stats");
@@ -85,26 +100,26 @@ export default function IntelSection({ showToast, agents }: Props) {
                     <h1 className="text-2xl font-bold mb-2">📡 Intel Feed</h1>
                     <p className="text-zinc-500">Latest intelligence reports from the field ({intel.length} reports)</p>
                 </div>
-                <button onClick={() => setShowModal(true)} className="btn-primary">+ Submit Intel</button>
+                <button onClick={() => updateUrl({ create: "true" })} className="btn-primary">+ Submit Intel</button>
             </div>
 
             {intel.length === 0 ? (
                 <div className="card text-center py-16">
                     <p className="text-5xl mb-4">📡</p>
                     <p className="text-zinc-400">Belum ada intel report</p>
-                    <button onClick={() => setShowModal(true)} className="btn-primary mt-4">Submit Intel Pertama</button>
+                    <button onClick={() => updateUrl({ create: "true" })} className="btn-primary mt-4">Submit Intel Pertama</button>
                 </div>
             ) : (
                 <div className="space-y-3">
                     {intel.map((item) => {
                         const styles = getPriorityStyles(item.priority);
-                        const isExpanded = selectedIntel?.id === item.id;
+                        const isExpanded = selectedId === item.id;
 
                         return (
                             <div
                                 key={item.id}
                                 className={`card glass-hover cursor-pointer transition-all duration-300 ${isExpanded ? 'ring-1 ring-green-500/50' : ''}`}
-                                onClick={() => setSelectedIntel(isExpanded ? null : item)}
+                                onClick={() => updateUrl({ id: isExpanded ? null : item.id })}
                             >
                                 <div className="flex items-center gap-4">
                                     <div className={`w-3 h-3 rounded-full ${styles.dot}`} />
@@ -162,7 +177,7 @@ export default function IntelSection({ showToast, agents }: Props) {
                                                 <span className="text-zinc-600">Date:</span> <span className="text-zinc-300">{new Date(item.createdAt).toLocaleString("id-ID")}</span>
                                             </div>
                                             <div>
-                                                <span className="text-zinc-600">ID:</span> <span className="text-zinc-400 font-mono">{item.id.slice(0, 8)}...</span>
+                                                <span className="text-zinc-600">ID:</span> <span className="text-zinc-400 font-mono">{item.id}</span>
                                             </div>
                                         </div>
                                     </div>
@@ -173,7 +188,7 @@ export default function IntelSection({ showToast, agents }: Props) {
                 </div>
             )}
 
-            <Modal isOpen={showModal} onClose={() => setShowModal(false)} title="Submit Intel Report">
+            <Modal isOpen={isCreating} onClose={() => updateUrl({ create: null })} title="Submit Intel Report">
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div>
                         <label className="block text-sm text-zinc-400 mb-2">Title</label>
