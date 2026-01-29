@@ -35,11 +35,19 @@ export function DashboardSection() {
 
     const setActiveTab = useCallback((tab: string, id?: string) => {
         const params = new URLSearchParams(searchParams.toString());
+        const currentTab = params.get("tab") || "overview";
+        const currentId = params.get("id") || "";
+
+        // Guard: Only push if something actually changed
+        if (tab === currentTab && (id === undefined || id === currentId)) {
+            return;
+        }
+
         params.set("tab", tab);
 
         if (id) {
             params.set("id", id);
-        } else if (tab !== searchParams.get("tab")) {
+        } else {
             params.delete("id");
             params.delete("create");
         }
@@ -112,40 +120,47 @@ export function DashboardSection() {
     }
 
     // Desktop Layout
-    const renderContent = () => {
-        const content = (() => {
-            switch (activeTab) {
-                case "overview":
-                    return <OverviewSection onNavigate={setActiveTab} />;
-                case "agents":
-                    return <AgentsSection showToast={showToast} onAgentCreated={fetchAgents} user={user} />;
-                case "operations":
-                    return <OperationsSection showToast={showToast} />;
-                case "intel":
-                    return <IntelSection showToast={showToast} agents={agents} />;
-                case "news":
-                    return <NewsSection showToast={showToast} />;
-                case "monitoring":
-                    return <DeviceTrackingSection />;
-                case "security":
-                    return <SecuritySection showToast={showToast} />;
-                case "gallery":
-                    return <AlbumsSection showToast={showToast} />;
-                case "settings":
-                    return <SettingsSection user={user} />;
-                default:
-                    return <OverviewSection onNavigate={setActiveTab} />;
-            }
-        })();
-
-        return <Suspense fallback={<LoadingSkeleton />}>{content}</Suspense>;
-    };
-
     return (
         <div className="min-h-screen bg-background">
             <Sidebar activeTab={activeTab} setActiveTab={setActiveTab} user={user} onLogout={handleLogout} />
-            <main className="ml-64 p-8">{renderContent()}</main>
+            <main className="ml-64 p-8">
+                <Suspense fallback={<LoadingSkeleton />}>
+                    <DashboardContent
+                        activeTab={activeTab}
+                        setActiveTab={setActiveTab}
+                        showToast={showToast}
+                        fetchAgents={fetchAgents}
+                        user={user}
+                        agents={agents}
+                    />
+                </Suspense>
+            </main>
             {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
         </div>
     );
+}
+
+function DashboardContent({ activeTab, setActiveTab, showToast, fetchAgents, user, agents }: any) {
+    switch (activeTab) {
+        case "overview":
+            return <OverviewSection onNavigate={setActiveTab} />;
+        case "agents":
+            return <AgentsSection showToast={showToast} onAgentCreated={fetchAgents} user={user} />;
+        case "operations":
+            return <OperationsSection showToast={showToast} />;
+        case "intel":
+            return <IntelSection showToast={showToast} agents={agents} />;
+        case "news":
+            return <NewsSection showToast={showToast} />;
+        case "monitoring":
+            return <DeviceTrackingSection />;
+        case "security":
+            return <SecuritySection showToast={showToast} />;
+        case "gallery":
+            return <AlbumsSection showToast={showToast} />;
+        case "settings":
+            return <SettingsSection user={user} />;
+        default:
+            return <OverviewSection onNavigate={setActiveTab} />;
+    }
 }

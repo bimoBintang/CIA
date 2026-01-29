@@ -1,7 +1,7 @@
 "use client";
 
 import { Pagination, Stats, VisitorLog } from "@/types";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, Suspense } from "react";
 import { DeviceChart } from "../charts/deviceChart";
 import { CountryChart } from "../charts/countryChart";
 
@@ -23,34 +23,50 @@ export default function DeviceTrackingSection() {
     const fetchData = useCallback(async () => {
         try {
             const res = await fetch(`/api/visitors?page=${page}&limit=20`);
+            if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
+
             const data = await res.json();
             if (data.success) {
-                setLogs(data.data);
-                setStats(data.stats);
-                setPagination(data.pagination);
+                setLogs(Array.isArray(data.data) ? data.data : []);
+                setStats(data.stats || null);
+                setPagination(data.pagination || null);
+            } else {
+                console.error("API Error fetching visitors:", data.error);
             }
         } catch (error) {
-            console.error("Error fetching visitors:", error);
+            console.error("Network Error fetching visitors:", error);
         } finally {
             setLoading(false);
         }
     }, [page]);
 
     useEffect(() => {
-        fetchData();
-        const interval = setInterval(fetchData, 30000);
-        return () => clearInterval(interval);
+        let isMounted = true;
+
+        const load = async () => {
+            if (isMounted) await fetchData();
+        };
+
+        load();
+        const interval = setInterval(() => {
+            if (isMounted) fetchData();
+        }, 30000);
+
+        return () => {
+            isMounted = false;
+            clearInterval(interval);
+        };
     }, [fetchData]);
 
-    const deviceData = stats
+    const deviceData = (stats && stats.devices)
         ? Object.entries(stats.devices).map(([name, value]) => ({
-            name: name.charAt(0).toUpperCase() + name.slice(1),
-            value,
+            name: (name && typeof name === 'string') ? (name.charAt(0).toUpperCase() + name.slice(1)) : 'Unknown',
+            value: Number(value) || 0,
             color: DEVICE_COLORS[name as keyof typeof DEVICE_COLORS] || "#6b7280",
         }))
         : [];
 
-    const countryData = stats?.topCountries?.slice(0, 8) || [];
+    const countryData = Array.isArray(stats?.topCountries) ? stats.topCountries.slice(0, 8) : [];
 
     if (loading) {
         return (
@@ -66,48 +82,58 @@ export default function DeviceTrackingSection() {
             <div className="flex items-center justify-between">
                 <div>
                     <h1 className="text-2xl font-bold mb-2">📍 Device Tracking</h1>
-                    <p className="text-zinc-500">
+                    <p className="text-zinc-500 text-sm">
                         Real-time visitor monitoring • {stats?.total || 0} total visits • {stats?.uniqueVisitors || 0} unique IPs
                     </p>
                 </div>
-                <button onClick={fetchData} className="btn-secondary text-sm">
+                <button onClick={() => fetchData()} className="btn-secondary text-sm">
                     🔄 Refresh
                 </button>
             </div>
 
             {/* Stats Cards */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 <div className="card">
-                    <div className="text-3xl font-bold text-green-400">{stats?.total || 0}</div>
-                    <div className="text-sm text-zinc-500">Total Visits</div>
+                    <div className="text-2xl md:text-3xl font-bold text-green-400">{stats?.total || 0}</div>
+                    <div className="text-xs md:text-sm text-zinc-500">Total Visits</div>
                 </div>
                 <div className="card">
-                    <div className="text-3xl font-bold text-blue-400">{stats?.uniqueVisitors || 0}</div>
-                    <div className="text-sm text-zinc-500">Unique IPs</div>
+                    <div className="text-2xl md:text-3xl font-bold text-blue-400">{stats?.uniqueVisitors || 0}</div>
+                    <div className="text-xs md:text-sm text-zinc-500">Unique IPs</div>
                 </div>
                 <div className="card">
-                    <div className="text-3xl font-bold text-amber-400">{stats?.devices?.desktop || 0}</div>
-                    <div className="text-sm text-zinc-500">Desktop</div>
+                    <div className="text-2xl md:text-3xl font-bold text-amber-400">{stats?.devices?.desktop || 0}</div>
+                    <div className="text-xs md:text-sm text-zinc-500">Desktop</div>
                 </div>
                 <div className="card">
-                    <div className="text-3xl font-bold text-purple-400">{stats?.devices?.mobile || 0}</div>
-                    <div className="text-sm text-zinc-500">Mobile</div>
+                    <div className="text-2xl md:text-3xl font-bold text-purple-400">{stats?.devices?.mobile || 0}</div>
+                    <div className="text-xs md:text-sm text-zinc-500">Mobile</div>
                 </div>
             </div>
 
-            {/* Charts Row - Lazy loaded */}
+            {/* Charts Row */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div className="card">
-                    <h3 className="font-semibold mb-4">📱 Device Breakdown</h3>
-                    <div className="h-48">
-                        <DeviceChart deviceData={deviceData} />
+                <div className="card lg:p-6">
+                    <h3 className="font-semibold mb-6 flex items-center gap-2">
+                        <span>📱 Device Breakdown</span>
+                        {deviceData.length === 0 && <span className="text-xs font-normal text-zinc-500">(No data)</span>}
+                    </h3>
+                    <div className="h-64">
+                        <Suspense fallback={<div className="h-full flex items-center justify-center text-zinc-500 text-sm">Loading charts...</div>}>
+                            <DeviceChart deviceData={deviceData} />
+                        </Suspense>
                     </div>
                 </div>
 
-                <div className="card">
-                    <h3 className="font-semibold mb-4">🌍 Top Countries</h3>
-                    <div className="h-48">
-                        <CountryChart countryData={countryData} />
+                <div className="card lg:p-6">
+                    <h3 className="font-semibold mb-6 flex items-center gap-2">
+                        <span>🌍 Top Countries</span>
+                        {countryData.length === 0 && <span className="text-xs font-normal text-zinc-500">(No data)</span>}
+                    </h3>
+                    <div className="h-64">
+                        <Suspense fallback={<div className="h-full flex items-center justify-center text-zinc-500 text-sm">Loading charts...</div>}>
+                            <CountryChart countryData={countryData} />
+                        </Suspense>
                     </div>
                 </div>
             </div>

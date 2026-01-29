@@ -31,11 +31,26 @@ export default function IntelSection({ showToast, agents }: Props) {
 
     const updateUrl = useCallback((updates: Record<string, string | null>) => {
         const params = new URLSearchParams(searchParams.toString());
+        let changed = false;
+
         Object.entries(updates).forEach(([key, value]) => {
-            if (value === null) params.delete(key);
-            else params.set(key, value);
+            const current = params.get(key);
+            if (value === null) {
+                if (current !== null) {
+                    params.delete(key);
+                    changed = true;
+                }
+            } else {
+                if (current !== value) {
+                    params.set(key, value);
+                    changed = true;
+                }
+            }
         });
-        router.push(`${pathname}?${params.toString()}`);
+
+        if (changed) {
+            router.push(`${pathname}?${params.toString()}`);
+        }
     }, [router, pathname, searchParams]);
 
     const fetchIntel = useCallback(async (force = false) => {
