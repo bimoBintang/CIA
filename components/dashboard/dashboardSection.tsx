@@ -85,7 +85,11 @@ export function DashboardSection() {
     const handleLogout = async () => {
         try {
             await fetch("/api/auth/logout", { method: "POST" });
-            router.push("/login");
+            const host = window.location.hostname;
+            const isProduction = host.endsWith("ciaa.web.id");
+            const baseDomain = isProduction ? "ciaa.web.id" : "localhost:3000";
+            const protocol = isProduction ? "https" : "http";
+            window.location.href = `${protocol}://auth.${baseDomain}/login`;
         } catch (error) {
             console.error("Error logging out:", error);
         }

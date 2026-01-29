@@ -117,7 +117,13 @@ export async function middleware(request: NextRequest) {
         }
     }
 
-    // 5. IP Ban Check
+    // 5. Global /login Redirection (Safety net for all subdomains)
+    if (!host.startsWith('auth.') && pathname === '/login') {
+        const protocol = isProduction ? 'https' : 'http';
+        return NextResponse.redirect(new URL(`${protocol}://auth.${baseDomain}/login${request.nextUrl.search}`));
+    }
+
+    // 6. IP Ban Check
     const ip = getClientIP(request);
     if (!pathname.startsWith('/api/banned-ips')) {
         const banCheck = await checkBannedIP(ip, request.nextUrl.origin);

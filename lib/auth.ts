@@ -82,12 +82,18 @@ export async function verifySession(payload: JWTPayload): Promise<{
 // Cookie management
 export async function setAuthCookie(token: string) {
     const cookieStore = await cookies();
+    const headersList = (await import('next/headers')).headers();
+    const host = (await headersList).get('host') || '';
+    const isProduction = host.endsWith('ciaa.web.id');
+    const domain = isProduction ? '.ciaa.web.id' : undefined;
+
     cookieStore.set('auth-token', token, {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
+        secure: isProduction,
         sameSite: 'lax',
         maxAge: 60 * 60 * 24, // 24 hours
         path: '/',
+        domain: domain,
     });
 }
 
@@ -98,7 +104,16 @@ export async function getAuthCookie(): Promise<string | undefined> {
 
 export async function removeAuthCookie() {
     const cookieStore = await cookies();
-    cookieStore.delete('auth-token');
+    const headersList = (await import('next/headers')).headers();
+    const host = (await headersList).get('host') || '';
+    const isProduction = host.endsWith('ciaa.web.id');
+    const domain = isProduction ? '.ciaa.web.id' : undefined;
+
+    cookieStore.delete({
+        name: 'auth-token',
+        path: '/',
+        domain: domain,
+    });
 }
 
 // Get current user from request (with session verification)
