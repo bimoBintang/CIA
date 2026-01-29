@@ -46,8 +46,8 @@ export function HeroSection() {
           <a href="#contact" className="btn-primary">
             Ajukan Akses
           </a>
-          <a href="#about" className="btn-secondary">
-            Pelajari Lebih
+          <a href="/login" className="px-8 py-4 rounded-lg bg-zinc-900/50 border border-zinc-800 text-white font-semibold hover:bg-zinc-800 transition-all flex items-center gap-2">
+            Login Dashboard
           </a>
         </div>
       </div>

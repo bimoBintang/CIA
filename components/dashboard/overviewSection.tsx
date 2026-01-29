@@ -3,9 +3,34 @@
 import { fetchWithCache } from "@/lib/cache";
 import { getRelativeTime } from "@/lib/utils";
 import { Intel, Stats } from "@/types";
+import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { StatCard } from "../cardSection";
 import { LoadingSkeleton } from "../sekeletons/LoadingSekeleton";
+
+function SessionDebug() {
+    const searchParams = useSearchParams();
+    const params = Array.from(searchParams.entries());
+
+    if (params.length === 0) return null;
+
+    return (
+        <div className="card border-dashed border-green-500/30 bg-green-500/5">
+            <h3 className="text-sm font-mono text-green-400 mb-2 flex items-center gap-2">
+                <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                SESSION_PARAMS_DETECTED
+            </h3>
+            <div className="space-y-1">
+                {params.map(([key, value]) => (
+                    <div key={key} className="flex gap-2 text-xs font-mono">
+                        <span className="text-zinc-500">[{key}]</span>
+                        <span className="text-zinc-300 break-all">{value}</span>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+}
 
 
 export function OverviewSection({ onNavigate }: { onNavigate: (tab: string) => void }) {
@@ -72,14 +97,17 @@ export function OverviewSection({ onNavigate }: { onNavigate: (tab: string) => v
                     </div>
                 </div>
 
-                <div className="card">
-                    <h3 className="text-lg font-semibold mb-4">Quick Actions</h3>
-                    <div className="space-y-2">
-                        <button onClick={() => onNavigate("intel")} className="w-full btn-primary text-sm py-3">📝 Submit Intel Report</button>
-                        <button onClick={() => onNavigate("messages")} className="w-full btn-secondary text-sm py-3">📡 Broadcast Message</button>
-                        <button onClick={() => onNavigate("operations")} className="w-full btn-secondary text-sm py-3">🎯 Create Operation</button>
-                        <button onClick={() => onNavigate("agents")} className="w-full btn-secondary text-sm py-3">👤 Invite Agent</button>
+                <div className="space-y-4 md:space-y-6">
+                    <div className="card">
+                        <h3 className="text-lg font-semibold mb-4">Quick Actions</h3>
+                        <div className="space-y-2">
+                            <button onClick={() => onNavigate("intel")} className="w-full btn-primary text-sm py-3">📝 Submit Intel Report</button>
+                            <button onClick={() => onNavigate("messages")} className="w-full btn-secondary text-sm py-3">📡 Broadcast Message</button>
+                            <button onClick={() => onNavigate("operations")} className="w-full btn-secondary text-sm py-3">🎯 Create Operation</button>
+                            <button onClick={() => onNavigate("agents")} className="w-full btn-secondary text-sm py-3">👤 Invite Agent</button>
+                        </div>
                     </div>
+                    <SessionDebug />
                 </div>
             </div>
         </div>

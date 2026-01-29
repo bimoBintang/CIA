@@ -37,6 +37,9 @@ export function Navigation() {
           <a href="#community" className="text-zinc-400 hover:text-green-400 transition-colors">
             Komunitas
           </a>
+          <a href="/login" className="text-zinc-400 hover:text-green-400 transition-colors font-medium">
+            Login
+          </a>
           <a href="#contact" className="btn-primary text-sm">
             Akses Terbatas
           </a>

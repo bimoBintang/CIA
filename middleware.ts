@@ -60,54 +60,76 @@ async function checkBannedIP(ip: string, baseUrl: string): Promise<{ banned: boo
 export async function middleware(request: NextRequest) {
     const { pathname } = request.nextUrl;
     const host = request.headers.get('host') || '';
+    const isProduction = host.endsWith('ciaa.web.id');
+    const baseDomain = isProduction ? 'ciaa.web.id' : 'localhost:3000';
 
-    // Subdomain routing (Rewrites)
-    if (host.startsWith('auth.')) {
-        // Rewrite auth.* to /login unless it's already there or an api/static file
-        if (pathname === '/') {
-            return NextResponse.rewrite(new URL('/login', request.url));
+    // 1. Authentication Check (Do this early for all routing decisions)
+    const token = request.cookies.get('auth-token')?.value;
+    let isAuthenticated = false;
+    let userRole: string | null = null;
+
+    if (token) {
+        try {
+            const { payload } = await jwtVerify(token, JWT_SECRET);
+            isAuthenticated = true;
+            userRole = (payload.role as string) || null;
+        } catch {
+            isAuthenticated = false;
         }
     }
 
+    // 2. Subdomain Enforcement (Redirect from main domain to subdomains)
+    if (host === baseDomain || host === `www.${baseDomain}`) {
+        const searchParams = request.nextUrl.search;
+        if (pathname === '/login') {
+            const protocol = isProduction ? 'https' : 'http';
+            return NextResponse.redirect(new URL(`${protocol}://auth.${baseDomain}${searchParams}`));
+        }
+        if (pathname.startsWith('/dashboard')) {
+            const protocol = isProduction ? 'https' : 'http';
+            return NextResponse.redirect(new URL(`${protocol}://dashboard.${baseDomain}${pathname}${searchParams}`));
+        }
+    }
+
+    // 3. Strict Auth Subdomain Routing
+    if (host.startsWith('auth.')) {
+        // Authenticated users should NEVER be on the auth subdomain
+        if (isAuthenticated) {
+            const sub = userRole === 'VIEWER' ? 'viewer' : 'dashboard';
+            const protocol = isProduction ? 'https' : 'http';
+            return NextResponse.redirect(new URL(`${protocol}://${sub}.${baseDomain}/${sub}`));
+        }
+
+        // Only allow root, /login, and static/api assets
+        if (pathname === '/' || pathname === '/login') {
+            return NextResponse.rewrite(new URL('/login', request.url));
+        }
+
+        // Redirect any other unauthorized path on auth subdomain to dashboard subdomain
+        const protocol = isProduction ? 'https' : 'http';
+        return NextResponse.redirect(new URL(`${protocol}://dashboard.${baseDomain}${pathname}${request.nextUrl.search}`));
+    }
+
+    // 4. Dashboard Subdomain Routing
     if (host.startsWith('dashboard.')) {
-        // Rewrite dashboard.* root to /dashboard
-        if (pathname === '/') {
+        if (pathname === '/' || pathname === '/dashboard') {
             return NextResponse.rewrite(new URL('/dashboard', request.url));
         }
     }
 
-    // Get client IP (supports Cloudflare)
+    // 5. IP Ban Check
     const ip = getClientIP(request);
-
-    // Check if IP is banned (skip for API routes to avoid infinite loop)
     if (!pathname.startsWith('/api/banned-ips')) {
         const banCheck = await checkBannedIP(ip, request.nextUrl.origin);
         if (banCheck.banned) {
-            // Return banned page
             return new NextResponse(
                 `<!DOCTYPE html>
                 <html>
                 <head>
                     <title>Access Denied | Circle CIA</title>
                     <style>
-                        body { 
-                            background: #0a0a0a; 
-                            color: #fff; 
-                            font-family: monospace;
-                            display: flex;
-                            align-items: center;
-                            justify-content: center;
-                            min-height: 100vh;
-                            margin: 0;
-                        }
-                        .container {
-                            text-align: center;
-                            padding: 40px;
-                            border: 1px solid #ef4444;
-                            border-radius: 16px;
-                            background: rgba(239,68,68,0.1);
-                            max-width: 500px;
-                        }
+                        body { background: #0a0a0a; color: #fff; font-family: monospace; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
+                        .container { text-align: center; padding: 40px; border: 1px solid #ef4444; border-radius: 16px; background: rgba(239,68,68,0.1); max-width: 500px; }
                         h1 { color: #ef4444; font-size: 48px; margin: 0 0 20px; }
                         p { color: #a1a1aa; line-height: 1.6; }
                         .ip { color: #fbbf24; margin-top: 20px; font-size: 12px; }
@@ -122,52 +144,36 @@ export async function middleware(request: NextRequest) {
                     </div>
                 </body>
                 </html>`,
-                {
-                    status: 403,
-                    headers: { 'Content-Type': 'text/html' },
-                }
+                { status: 403, headers: { 'Content-Type': 'text/html' } }
             );
         }
     }
 
-    const token = request.cookies.get('auth-token')?.value;
-
-    // Check if user is authenticated and get role
-    let isAuthenticated = false;
-    let userRole: string | null = null;
-
-    if (token) {
-        try {
-            const { payload } = await jwtVerify(token, JWT_SECRET);
-            isAuthenticated = true;
-            userRole = (payload.role as string) || null;
-        } catch {
-            isAuthenticated = false;
-        }
-    }
-
-    // Redirect authenticated users away from login page
+    // 6. Access Control & Protection
+    // Redirect authenticated users away from auth pages (already handled by subdomain sync above but good to keep as fallback)
     if (authRoutes.some(route => pathname.startsWith(route)) && isAuthenticated) {
-        // VIEWER goes to /viewer, others go to /dashboard
-        const redirectUrl = userRole === 'VIEWER' ? '/viewer' : '/dashboard';
-        return NextResponse.redirect(new URL(redirectUrl, request.url));
+        const sub = userRole === 'VIEWER' ? 'viewer' : 'dashboard';
+        const protocol = isProduction ? 'https' : 'http';
+        return NextResponse.redirect(new URL(`${protocol}://${sub}.${baseDomain}/${sub}`));
     }
 
-    // Protect dashboard routes (not for VIEWER)
+    // Protect Dashboard
     if (pathname.startsWith('/dashboard') && !isAuthenticated) {
-        const loginUrl = new URL('/login', request.url);
+        const protocol = isProduction ? 'https' : 'http';
+        const loginUrl = new URL(`${protocol}://auth.${baseDomain}/login`);
         loginUrl.searchParams.set('redirect', pathname);
         return NextResponse.redirect(loginUrl);
     }
 
-    // Redirect VIEWER away from dashboard to /viewer
+    // VIEWER Access Control
     if (pathname.startsWith('/dashboard') && userRole === 'VIEWER') {
-        return NextResponse.redirect(new URL('/viewer', request.url));
+        const protocol = isProduction ? 'https' : 'http';
+        return NextResponse.redirect(new URL(`${protocol}://viewer.${baseDomain}/viewer`));
     }
 
-    // Protect viewer route
     if (pathname.startsWith('/viewer') && !isAuthenticated) {
-        const loginUrl = new URL('/login', request.url);
+        const protocol = isProduction ? 'https' : 'http';
+        const loginUrl = new URL(`${protocol}://auth.${baseDomain}/login`);
         loginUrl.searchParams.set('redirect', pathname);
         return NextResponse.redirect(loginUrl);
     }
