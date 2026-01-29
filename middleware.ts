@@ -63,6 +63,11 @@ export async function middleware(request: NextRequest) {
     const isProduction = host.endsWith('ciaa.web.id');
     const baseDomain = isProduction ? 'ciaa.web.id' : 'localhost:3000';
 
+    // 0. Path Classification
+    const isApi = pathname.startsWith('/api');
+    const isStatic = pathname.startsWith('/_next') || pathname.match(/\.(png|jpg|jpeg|gif|webp|svg|ico|json)$/);
+    const isInternal = isApi || isStatic;
+
     // Authentication Check (Do this early for all routing decisions)
     const token = request.cookies.get('auth-token')?.value;
     let isAuthenticated = false;
@@ -78,49 +83,72 @@ export async function middleware(request: NextRequest) {
         }
     }
 
+    // Define response helper to handle CORS easily
+    const withCors = (res: NextResponse) => {
+        const origin = request.headers.get('origin');
+        // Allow any subdomain of the base domain
+        if (origin && (origin.endsWith(baseDomain) || origin === `http://${baseDomain}` || origin === `https://${baseDomain}`)) {
+            res.headers.set('Access-Control-Allow-Origin', origin);
+            res.headers.set('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+            res.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+            res.headers.set('Access-Control-Allow-Credentials', 'true');
+        }
+        return res;
+    };
+
+    // Handle Preflight (OPTIONS) requests
+    if (request.method === 'OPTIONS') {
+        return withCors(new NextResponse(null, { status: 204 }));
+    }
+
     // 2. Subdomain Enforcement (Redirect from main domain to subdomains)
-    if (host === baseDomain || host === `www.${baseDomain}`) {
+    if ((host === baseDomain || host === `www.${baseDomain}`) && !isInternal) {
         const searchParams = request.nextUrl.search;
         if (pathname === '/login') {
             const protocol = isProduction ? 'https' : 'http';
-            return NextResponse.redirect(new URL(`${protocol}://auth.${baseDomain}${searchParams}`));
+            return withCors(NextResponse.redirect(new URL(`${protocol}://auth.${baseDomain}${searchParams}`)));
         }
         if (pathname.startsWith('/dashboard')) {
             const protocol = isProduction ? 'https' : 'http';
-            return NextResponse.redirect(new URL(`${protocol}://dashboard.${baseDomain}${pathname}${searchParams}`));
+            return withCors(NextResponse.redirect(new URL(`${protocol}://dashboard.${baseDomain}${pathname}${searchParams}`)));
         }
     }
 
     // 3. Strict Auth Subdomain Routing
     if (host.startsWith('auth.')) {
-        // Authenticated users should NEVER be on the auth subdomain
-        if (isAuthenticated) {
+        // Authenticated users should NEVER be on the auth subdomain (except for API/Static)
+        if (isAuthenticated && !isInternal) {
             const sub = userRole === 'VIEWER' ? 'viewer' : 'dashboard';
             const protocol = isProduction ? 'https' : 'http';
-            return NextResponse.redirect(new URL(`${protocol}://${sub}.${baseDomain}/${sub}`));
+            return withCors(NextResponse.redirect(new URL(`${protocol}://${sub}.${baseDomain}/${sub}`)));
         }
 
         // Only allow root, /login, and static/api assets
         if (pathname === '/' || pathname === '/login') {
-            return NextResponse.rewrite(new URL('/login', request.url));
+            return withCors(NextResponse.rewrite(new URL('/login', request.url)));
+        }
+
+        // If it's an internal asset or API, let it through on THIS subdomain
+        if (isInternal) {
+            return withCors(NextResponse.next());
         }
 
         // Redirect any other unauthorized path on auth subdomain to dashboard subdomain
         const protocol = isProduction ? 'https' : 'http';
-        return NextResponse.redirect(new URL(`${protocol}://dashboard.${baseDomain}${pathname}${request.nextUrl.search}`));
+        return withCors(NextResponse.redirect(new URL(`${protocol}://dashboard.${baseDomain}${pathname}${request.nextUrl.search}`)));
     }
 
     // 4. Dashboard Subdomain Routing
     if (host.startsWith('dashboard.')) {
         if (pathname === '/' || pathname === '/dashboard') {
-            return NextResponse.rewrite(new URL('/dashboard', request.url));
+            return withCors(NextResponse.rewrite(new URL('/dashboard', request.url)));
         }
     }
 
     // 5. Global /login Redirection (Safety net for all subdomains)
-    if (!host.startsWith('auth.') && pathname === '/login') {
+    if (!host.startsWith('auth.') && pathname === '/login' && !isInternal) {
         const protocol = isProduction ? 'https' : 'http';
-        return NextResponse.redirect(new URL(`${protocol}://auth.${baseDomain}/login${request.nextUrl.search}`));
+        return withCors(NextResponse.redirect(new URL(`${protocol}://auth.${baseDomain}/login${request.nextUrl.search}`)));
     }
 
     // 6. IP Ban Check
@@ -128,7 +156,7 @@ export async function middleware(request: NextRequest) {
     if (!pathname.startsWith('/api/banned-ips')) {
         const banCheck = await checkBannedIP(ip, request.nextUrl.origin);
         if (banCheck.banned) {
-            return new NextResponse(
+            return withCors(new NextResponse(
                 `<!DOCTYPE html>
                 <html>
                 <head>
@@ -151,40 +179,39 @@ export async function middleware(request: NextRequest) {
                 </body>
                 </html>`,
                 { status: 403, headers: { 'Content-Type': 'text/html' } }
-            );
+            ));
         }
     }
 
-    // 6. Access Control & Protection
-    // Redirect authenticated users away from auth pages (already handled by subdomain sync above but good to keep as fallback)
-    if (authRoutes.some(route => pathname.startsWith(route)) && isAuthenticated) {
+    // 7. Access Control & Protection
+    if (authRoutes.some(route => pathname.startsWith(route)) && isAuthenticated && !isInternal) {
         const sub = userRole === 'VIEWER' ? 'viewer' : 'dashboard';
         const protocol = isProduction ? 'https' : 'http';
-        return NextResponse.redirect(new URL(`${protocol}://${sub}.${baseDomain}/${sub}`));
+        return withCors(NextResponse.redirect(new URL(`${protocol}://${sub}.${baseDomain}/${sub}`)));
     }
 
     // Protect Dashboard
-    if (pathname.startsWith('/dashboard') && !isAuthenticated) {
+    if (pathname.startsWith('/dashboard') && !isAuthenticated && !isInternal) {
         const protocol = isProduction ? 'https' : 'http';
         const loginUrl = new URL(`${protocol}://auth.${baseDomain}/login`);
         loginUrl.searchParams.set('redirect', pathname);
-        return NextResponse.redirect(loginUrl);
+        return withCors(NextResponse.redirect(loginUrl));
     }
 
     // VIEWER Access Control
-    if (pathname.startsWith('/dashboard') && userRole === 'VIEWER') {
+    if (pathname.startsWith('/dashboard') && userRole === 'VIEWER' && !isInternal) {
         const protocol = isProduction ? 'https' : 'http';
-        return NextResponse.redirect(new URL(`${protocol}://viewer.${baseDomain}/viewer`));
+        return withCors(NextResponse.redirect(new URL(`${protocol}://viewer.${baseDomain}/viewer`)));
     }
 
-    if (pathname.startsWith('/viewer') && !isAuthenticated) {
+    if (pathname.startsWith('/viewer') && !isAuthenticated && !isInternal) {
         const protocol = isProduction ? 'https' : 'http';
         const loginUrl = new URL(`${protocol}://auth.${baseDomain}/login`);
         loginUrl.searchParams.set('redirect', pathname);
-        return NextResponse.redirect(loginUrl);
+        return withCors(NextResponse.redirect(loginUrl));
     }
 
-    return NextResponse.next();
+    return withCors(NextResponse.next());
 }
 
 export const config = {
